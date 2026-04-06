@@ -1,10 +1,11 @@
 import { CLUSTER_COLORS, equityColor, clamp, INDICATOR_LABELS, fmt } from "./utils.js";
 
-// Relative to index.html (fetch base URL), not this file.
-const DATA_GEOJSON = "outputs/grid_points.geojson";
-const DATA_META = "outputs/metadata.json";
-const DATA_SUMMARY = "outputs/cluster_summary.csv";
-const DATA_Z = "outputs/cluster_feature_zscores.csv";
+// Resolve from this module so paths work on GitHub Pages, local /docs server, or nested URLs.
+const DATA_BASE = new URL("../outputs/", import.meta.url);
+const DATA_GEOJSON = new URL("grid_points.geojson", DATA_BASE).href;
+const DATA_META = new URL("metadata.json", DATA_BASE).href;
+const DATA_SUMMARY = new URL("cluster_summary.csv", DATA_BASE).href;
+const DATA_Z = new URL("cluster_feature_zscores.csv", DATA_BASE).href;
 
 const els = {
   colorMode: document.getElementById("colorMode"),
@@ -39,7 +40,7 @@ const els = {
   pcaN: document.getElementById("pcaN"),
 };
 
-els.dataPath.textContent = DATA_GEOJSON;
+els.dataPath.textContent = "outputs/grid_points.geojson";
 
 let meta = null;
 let map = null;
@@ -123,6 +124,12 @@ function setSelection(props) {
   setTimeout(() => {
     els.reportAnchor?.scrollIntoView({ behavior: "smooth", block: "start" });
   }, 0);
+}
+
+async function fetchJson(url) {
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(`HTTP ${r.status} loading ${url}`);
+  return r.json();
 }
 
 function parseCsv(url) {
@@ -283,14 +290,14 @@ async function init() {
     attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
   }).addTo(map);
 
-  const [metaResp, geoResp, summary, z] = await Promise.all([
-    fetch(DATA_META),
-    fetch(DATA_GEOJSON),
+  const [m, g, summary, z] = await Promise.all([
+    fetchJson(DATA_META),
+    fetchJson(DATA_GEOJSON),
     parseCsv(DATA_SUMMARY),
     parseCsv(DATA_Z),
   ]);
-  meta = await metaResp.json();
-  geo = await geoResp.json();
+  meta = m;
+  geo = g;
   summaryRows = summary;
   zRows = z;
 
@@ -311,7 +318,9 @@ els.reportCluster?.addEventListener("change", (e) => setReportCluster(e.target.v
 init().catch((err) => {
   console.error(err);
   alert(
-    "Failed to load dashboard data. Make sure you are serving the folder with a local HTTP server (not file://) and that docs/outputs or outputs exists."
+    `Failed to load dashboard data.\n\n${String(err?.message || err)}\n\n` +
+      "If you opened this as a file, run: python -m http.server 5173 --directory docs\n" +
+      "Ensure docs/outputs contains the pipeline files (run run_pipeline.py --output-dir docs/outputs)."
   );
 });
 
