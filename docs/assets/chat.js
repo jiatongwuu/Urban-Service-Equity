@@ -255,7 +255,7 @@ function toGeminiContents(messages) {
 
 async function callGoogle({ model, apiKey, messages, temperature, maxTokens }) {
   const system = messages.find((m) => m.role === "system")?.content ?? "";
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
+  const url = `https://generativelanguage.googleapis.com/v1/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
   const r = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
