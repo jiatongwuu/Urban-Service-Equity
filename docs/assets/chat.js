@@ -2,9 +2,18 @@ const DATA_BASE = new URL("../outputs/", import.meta.url);
 const DATA_GEOJSON = new URL("grid_points.geojson", DATA_BASE).href;
 const DATA_META = new URL("metadata.json", DATA_BASE).href;
 const DATA_SUMMARY = new URL("cluster_summary.csv", DATA_BASE).href;
+const SOCIOPAPER_TXT = new URL("../sociopaper/zahnow1.txt", import.meta.url).href;
 
 const STORAGE_KEY = "equity_prompt_lab_v1";
 const MAX_HISTORY = 16;
+const SOCIOPAPER_ID = "zahnow1";
+const SOCIOPAPER_TOP_K = 5;
+const SOCIOPAPER_CHUNK_TARGET = 1100;
+const STOPWORDS = new Set([
+  "the", "and", "for", "are", "but", "not", "you", "all", "can", "her", "was", "one", "our", "out", "has", "have", "been", "were", "said", "each",
+  "which", "their", "time", "will", "about", "there", "could", "other", "than", "then", "them", "these", "some", "what", "with", "from", "that",
+  "this", "into", "such", "when", "may", "more", "also", "how", "its", "who", "had", "any",
+]);
 
 const els = {
   modelSelect: document.getElementById("modelSelect"),
@@ -32,6 +41,8 @@ const state = {
   summaryRows: [],
   gridById: new Map(),
   summaryByCluster: new Map(),
+  /** @type {{ id: number; text: string }[]} */
+  sociopaperChunks: [],
 };
 
 const DEFAULT_SYSTEM_PROMPT = `You are an urban service equity assistant.
@@ -41,7 +52,8 @@ Rules:
 1) Separate your answer into: place-specific analysis, cluster-level analysis, and general recommendations.
 2) If evidence is uncertain, say what is uncertain.
 3) Cite concrete references when provided in context.
-4) Keep explanations concise and actionable.`;
+4) Keep explanations concise and actionable.
+5) When sociology paper excerpts are included in the system message, ground relevant conceptual claims in those passages and cite them (e.g. zahnow1 chunk 3).`;
 
 function setStatus(msg) {
   els.chatStatus.textContent = msg;
@@ -121,6 +133,73 @@ async function loadContextData() {
   for (const feat of geo.features ?? []) {
     const id = String(feat?.properties?.grid_id ?? "");
     if (id) state.gridById.set(id, feat.properties);
+  }
+}
+
+function normalizeSociopaperRaw(text) {
+  return String(text || "")
+    .replace(/-\r?\n/g, "")
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n");
+}
+
+function buildSociopaperChunks(text) {
+  const flat = normalizeSociopaperRaw(text).replace(/\n+/g, " ").replace(/\s+/g, " ").trim();
+  if (!flat) return [];
+  const sentences = flat.split(/(?<=[.!?])\s+/).filter(Boolean);
+  const chunks = [];
+  let buf = "";
+  for (const s of sentences) {
+    const next = buf ? `${buf} ${s}` : s;
+    if (next.length >= SOCIOPAPER_CHUNK_TARGET && buf) {
+      chunks.push(buf.trim());
+      buf = s;
+    } else {
+      buf = next;
+    }
+  }
+  if (buf.trim()) chunks.push(buf.trim());
+  return chunks.map((t, i) => ({ id: i + 1, text: t }));
+}
+
+function sociopaperQueryTokens(query) {
+  const raw = String(query || "")
+    .toLowerCase()
+    .match(/[a-z0-9]+/g);
+  if (!raw) return [];
+  return raw.filter((w) => w.length > 2 && !STOPWORDS.has(w));
+}
+
+function sociopaperChunkScore(chunkText, tokens) {
+  if (!tokens.length) return 0;
+  const hay = chunkText.toLowerCase();
+  let score = 0;
+  for (const t of tokens) {
+    if (hay.includes(t)) score += 1;
+  }
+  return score;
+}
+
+function retrieveSociopaperExcerpts(userQuery) {
+  const tokens = sociopaperQueryTokens(userQuery);
+  if (!state.sociopaperChunks.length) return "";
+  const ranked = state.sociopaperChunks
+    .map((c) => ({ c, score: sociopaperChunkScore(c.text, tokens) }))
+    .sort((a, b) => b.score - a.score);
+  const picked = (tokens.length ? ranked.filter((x) => x.score > 0) : ranked).slice(0, SOCIOPAPER_TOP_K).map((x) => x.c);
+  const fallback = tokens.length && !picked.length ? ranked.slice(0, SOCIOPAPER_TOP_K).map((x) => x.c) : picked;
+  const lines = fallback.map((c) => `[${SOCIOPAPER_ID} chunk ${c.id}]\n${c.text}`);
+  return `Sociology paper excerpts (source: ${SOCIOPAPER_ID}.txt). Prefer these passages for concepts and citations when they are relevant; integrate with dashboard context where useful.\n\n${lines.join("\n\n")}`;
+}
+
+async function loadSociopaper() {
+  try {
+    const r = await fetch(SOCIOPAPER_TXT);
+    if (!r.ok) throw new Error(`HTTP ${r.status} loading sociopaper`);
+    const text = await r.text();
+    state.sociopaperChunks = buildSociopaperChunks(text);
+  } catch {
+    state.sociopaperChunks = [];
   }
 }
 
@@ -255,7 +334,7 @@ function toGeminiContents(messages) {
 
 async function callGoogle({ model, apiKey, messages, temperature, maxTokens }) {
   const system = messages.find((m) => m.role === "system")?.content ?? "";
-  const url = `https://generativelanguage.googleapis.com/v1/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
   const r = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -280,10 +359,12 @@ async function callModel(opts) {
   return callOpenAI(opts);
 }
 
-function fullSystemPrompt() {
+function fullSystemPrompt(userQuery) {
   const manualPayload = (els.contextPreview.value || "").trim();
   const payloadText = manualPayload || JSON.stringify(contextPayload(), null, 2);
-  return `${els.systemPrompt.value.trim()}\n\nContext payload (JSON):\n${payloadText}`;
+  const paper = retrieveSociopaperExcerpts(userQuery);
+  const paperBlock = paper ? `\n\n${paper}` : "";
+  return `${els.systemPrompt.value.trim()}\n\nContext payload (JSON):\n${payloadText}${paperBlock}`;
 }
 
 async function send() {
@@ -307,7 +388,7 @@ async function send() {
   saveState();
 
   try {
-    const messages = [{ role: "system", content: fullSystemPrompt() }, ...state.chat];
+    const messages = [{ role: "system", content: fullSystemPrompt(userText) }, ...state.chat];
     const content = await callModel({
       model,
       apiKey,
@@ -369,7 +450,7 @@ async function init() {
 
   try {
     setStatus("Loading dashboard context...");
-    await loadContextData();
+    await Promise.all([loadContextData(), loadSociopaper()]);
     renderContextPreview();
     setStatus("Ready");
   } catch (err) {
