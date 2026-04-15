@@ -85,6 +85,13 @@ Before answering, you must decide:
 
 4. Never force citations if irrelevant`;
 
+const RESPONSE_STYLE_GUARD = `Mandatory output style rules:
+- Never output bolded quoted text (including patterns like **"..."**, **“...”**, or ** '...' **).
+- Do not use technical labels in user-facing text: "performance", "equity score", "equity mean", "performance mean", "z-score", "pipeline", "equity_mean", "performance_mean".
+- Always paraphrase those labels into plain language.
+- Never expose raw cluster taxonomy names in user-facing text, such as "Cluster A/B/C" or labels like "Dominant Residential".
+- Do not expose raw field names from JSON context in the final answer.`;
+
 function setStatus(msg) {
   els.chatStatus.textContent = msg;
 }
@@ -103,7 +110,12 @@ function loadSavedState() {
     els.clusterContext.value = saved.clusterContext ?? "0";
     els.gridContext.value = saved.gridContext ?? "";
     els.systemPrompt.value = saved.systemPrompt ?? DEFAULT_SYSTEM_PROMPT;
-    state.chat = Array.isArray(saved.chat) ? saved.chat.slice(-MAX_HISTORY) : [];
+    state.chat = Array.isArray(saved.chat)
+      ? saved.chat.slice(-MAX_HISTORY).map((m) => ({
+          ...m,
+          content: m?.role === "assistant" ? sanitizeAssistantText(m?.content) : String(m?.content ?? ""),
+        }))
+      : [];
   } catch {
     // ignore malformed local storage
   }
@@ -290,7 +302,7 @@ function bubble(role, text) {
   meta.textContent = role === "assistant" ? "Assistant" : "You";
   const body = document.createElement("pre");
   body.className = "msgBody";
-  body.textContent = text;
+  body.textContent = role === "assistant" ? sanitizeAssistantText(text) : text;
   wrap.appendChild(meta);
   wrap.appendChild(body);
   return wrap;
@@ -391,15 +403,32 @@ async function callModel(opts) {
 
 function sanitizeAssistantText(text) {
   return String(text || "")
-    // Remove bold + quoted emphasis like **"term"**
+    // Remove bold + quoted emphasis like **"term"** or **“term”** or **'term'**
     .replace(/\*\*"(.*?)"\*\*/g, "$1")
-    // Remove remaining markdown bold marks.
+    .replace(/\*\*“(.*?)”\*\*/g, "$1")
+    .replace(/\*\*'(.*?)'\*\*/g, "$1")
+    // Remove spaced variants like ** "term" **.
+    .replace(/\*\*\s*["“'](.*?)["”']\s*\*\*/g, "$1")
+    // Remove remaining markdown emphasis marks.
     .replace(/\*\*(.*?)\*\*/g, "$1")
+    .replace(/__(.*?)__/g, "$1")
+    // Remove visible quote marks.
+    .replace(/[“”"]/g, "")
     // Plain-language replacements for frequent jargon.
+    .replace(/\bperformance mean\b/gi, "citywide average service level")
+    .replace(/\bperformance_mean\b/gi, "citywide average service level")
+    .replace(/\bneed mean\b/gi, "citywide average demand level")
+    .replace(/\bneed_mean\b/gi, "citywide average demand level")
+    .replace(/\bequity mean\b/gi, "citywide average fairness level")
+    .replace(/\bequity_mean\b/gi, "citywide average fairness level")
     .replace(/\bequity score\b/gi, "overall fairness level")
     .replace(/\bperformance\b/gi, "service access and quality")
+    .replace(/\bneed\b/gi, "local demand")
     .replace(/\bz-score\b/gi, "distance from city average")
-    .replace(/\bpipeline\b/gi, "calculation process");
+    .replace(/\bpipeline\b/gi, "calculation process")
+    // Replace raw cluster taxonomy labels with plain language.
+    .replace(/\bcluster\s*[A-Z]\b(?:\s*[—-]\s*[^.,;\n]*)?/gi, "a similar neighborhood type")
+    .replace(/\bDominant Residential\b/gi, "mainly residential areas");
 }
 
 function fullSystemPrompt(userQuery) {
@@ -407,7 +436,7 @@ function fullSystemPrompt(userQuery) {
   const payloadText = manualPayload || JSON.stringify(contextPayload(), null, 2);
   const paper = retrieveSociopaperExcerpts(userQuery);
   const paperBlock = paper ? `\n\n${paper}` : "";
-  return `${els.systemPrompt.value.trim()}\n\nContext payload (JSON):\n${payloadText}${paperBlock}`;
+  return `${els.systemPrompt.value.trim()}\n\n${RESPONSE_STYLE_GUARD}\n\nContext payload (JSON):\n${payloadText}${paperBlock}`;
 }
 
 async function send() {
