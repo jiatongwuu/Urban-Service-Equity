@@ -38,6 +38,23 @@ Generated files are **not** checked into git. You create them locally or in Cola
 - `cluster_feature_zscores.csv` — Cluster vs. city z-scores for root-cause charts  
 - `metadata.json` — PCA weights, top features per cluster, cluster heuristics  
 - `grid_points.geojson` — (optional, `--write-geojson`) Points for the map  
+- `grid_place_map.csv` — Grid-to-place lookup (`neighborhood` + `supervisor district`) for place-aware chat queries
+
+### Rebuild place mapping after data updates
+
+If you update any of the files below:
+
+- `docs/outputs/grid_points.geojson`
+- `docs/outputs/sf_neighborhoods.geojson`
+- `docs/outputs/sf_supervisor_districts.geojson`
+
+rebuild the lookup table with:
+
+```bash
+python3 scripts/build_grid_place_map.py
+```
+
+This rewrites `docs/outputs/grid_place_map.csv` so chat/location lookups stay in sync with the latest boundaries and grid points.
 
 ---
 
