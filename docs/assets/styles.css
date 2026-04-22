@@ -13,6 +13,7 @@
 
 *{box-sizing:border-box}
 html,body{height:100%}
+html{scroll-behavior:smooth}
 body{
   margin:0;
   font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji","Segoe UI Emoji";
@@ -21,6 +22,258 @@ body{
 }
 
 code{background:rgba(255,255,255,.06);padding:2px 6px;border-radius:6px}
+
+.hero{
+  border-bottom:1px solid rgba(255,255,255,.06);
+  background:
+    radial-gradient(900px 500px at 20% 10%, rgba(91,140,255,.18), transparent 60%),
+    radial-gradient(900px 500px at 80% 30%, rgba(34,197,94,.12), transparent 60%),
+    linear-gradient(180deg, rgba(21,24,32,.55), rgba(13,15,20,0));
+}
+.heroScene{
+  position:relative;
+  min-height: calc(100vh - 66px);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  overflow:hidden;
+  padding:26px 16px 36px;
+}
+.heroBg{position:absolute;inset:0;pointer-events:none;will-change: transform}
+.blob{
+  position:absolute;
+  width:520px;
+  height:520px;
+  border-radius:999px;
+  filter: blur(28px);
+  opacity:.55;
+  mix-blend-mode: screen;
+  transform: translate3d(0,0,0);
+}
+.blob.b1{left:-120px;top:-120px;background:radial-gradient(circle at 30% 30%, rgba(91,140,255,.85), rgba(91,140,255,0) 60%);animation: float1 12s ease-in-out infinite;}
+.blob.b2{right:-180px;top:10%;background:radial-gradient(circle at 40% 40%, rgba(34,197,94,.75), rgba(34,197,94,0) 62%);animation: float2 14s ease-in-out infinite;}
+.blob.b3{left:10%;bottom:-220px;background:radial-gradient(circle at 40% 40%, rgba(253,224,71,.55), rgba(253,224,71,0) 62%);animation: float3 16s ease-in-out infinite;}
+.gridGlow{
+  position:absolute;
+  inset:0;
+  background:
+    linear-gradient(90deg, rgba(255,255,255,.05) 1px, transparent 1px),
+    linear-gradient(180deg, rgba(255,255,255,.05) 1px, transparent 1px);
+  background-size: 60px 60px;
+  mask-image: radial-gradient(circle at 45% 35%, rgba(0,0,0,.75), rgba(0,0,0,0) 65%);
+  opacity:.22;
+  animation: gridPan 18s linear infinite;
+}
+.heroBg{
+  transform: translate3d(
+    calc(var(--parX, 0px)),
+    calc(var(--parY, 0px)),
+    0
+  );
+}
+.heroInner{
+  position:relative;
+  max-width:1100px;
+  margin:0 auto;
+  padding:22px 10px 34px;
+}
+.heroInner > *{
+  opacity:0;
+  transform: translateY(10px);
+  animation: heroIn .9s cubic-bezier(.2,.9,.2,1) forwards;
+}
+.heroInner .heroEyebrow{animation-delay: .05s}
+.heroInner .heroTitle{animation-delay: .12s}
+.heroInner .heroLead{animation-delay: .22s}
+.heroInner .bento{animation-delay: .34s}
+.heroInner .heroActions{animation-delay: .46s}
+.heroInner .heroMeta{animation-delay: .56s}
+
+@keyframes heroIn{
+  to{opacity:1; transform: translateY(0)}
+}
+
+.bento{
+  margin-top:18px;
+  display:grid;
+  grid-template-columns: 1.25fr 1fr;
+  gap:12px;
+  max-width:980px;
+}
+.bentoCard{
+  position:relative;
+  border:1px solid rgba(255,255,255,.10);
+  border-radius:16px;
+  background:
+    radial-gradient(900px 240px at 20% 0%, rgba(91,140,255,.18), transparent 60%),
+    radial-gradient(900px 240px at 80% 30%, rgba(34,197,94,.10), transparent 60%),
+    rgba(15,18,25,.55);
+  overflow:hidden;
+  padding:14px 14px 12px;
+  box-shadow: 0 20px 80px rgba(0,0,0,.35);
+}
+.bentoCard::before{
+  content:"";
+  position:absolute;
+  inset:0;
+  background:
+    linear-gradient(90deg, rgba(255,255,255,.06) 1px, transparent 1px),
+    linear-gradient(180deg, rgba(255,255,255,.06) 1px, transparent 1px);
+  background-size: 56px 56px;
+  opacity:.20;
+  mask-image: radial-gradient(circle at 30% 20%, rgba(0,0,0,.9), rgba(0,0,0,0) 62%);
+  pointer-events:none;
+}
+.bentoTitle{font-weight:900;letter-spacing:.1px;margin:0 0 6px}
+.bentoText{margin:0;color:rgba(232,234,240,.76);line-height:1.55;font-size:13px}
+.bentoKpis{
+  margin-top:10px;
+  display:grid;
+  grid-template-columns: repeat(3, minmax(0,1fr));
+  gap:10px;
+}
+.kpi{
+  border:1px solid rgba(255,255,255,.10);
+  background:rgba(0,0,0,.20);
+  border-radius:14px;
+  padding:10px;
+}
+.kpiVal{font-weight:950;font-size:14px;letter-spacing:.2px}
+.kpiLab{margin-top:4px;color:var(--muted);font-size:11px;line-height:1.35}
+.bentoSide{
+  display:grid;
+  grid-template-rows: 1fr 1fr;
+  gap:12px;
+}
+.bentoMini{
+  border:1px solid rgba(255,255,255,.10);
+  border-radius:16px;
+  background:rgba(21,24,32,.55);
+  padding:14px;
+  position:relative;
+  overflow:hidden;
+}
+.bentoMini::after{
+  content:"";
+  position:absolute;
+  inset:-2px;
+  background: radial-gradient(450px 160px at 20% 20%, rgba(253,224,71,.16), transparent 60%);
+  opacity:.8;
+  pointer-events:none;
+}
+.bentoTag{
+  display:inline-flex;
+  gap:8px;
+  align-items:center;
+  padding:4px 10px;
+  border-radius:999px;
+  border:1px solid rgba(255,255,255,.10);
+  background:rgba(255,255,255,.06);
+  color:rgba(232,234,240,.82);
+  font-size:11px;
+  font-weight:800;
+  letter-spacing:.2px;
+}
+.bentoMini h3{margin:10px 0 6px;font-size:13px}
+.bentoMini p{margin:0;color:rgba(232,234,240,.72);font-size:12px;line-height:1.55}
+
+.bentoCard,.bentoMini,.btn{
+  transform: translate3d(0,0,0);
+}
+.bentoCard:hover,.bentoMini:hover{
+  border-color:rgba(91,140,255,.28);
+  filter:brightness(1.06);
+}
+.heroEyebrow{
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  color:rgba(232,234,240,.85);
+  background:rgba(255,255,255,.06);
+  border:1px solid rgba(255,255,255,.08);
+  padding:6px 10px;
+  border-radius:999px;
+  font-size:12px;
+  font-weight:800;
+  letter-spacing:.3px;
+}
+.heroTitle{
+  margin:14px 0 10px;
+  font-size:44px;
+  line-height:1.15;
+  letter-spacing:-.4px;
+}
+.heroLead{
+  margin:0;
+  max-width:780px;
+  color:rgba(232,234,240,.78);
+  font-size:16px;
+  line-height:1.6;
+}
+.heroActions{
+  margin-top:16px;
+  display:flex;
+  gap:10px;
+  flex-wrap:wrap;
+}
+.heroMeta{
+  margin-top:12px;
+  color:var(--muted);
+  font-size:12px;
+  line-height:1.5;
+}
+
+.scrollCue{
+  position:absolute;
+  left:50%;
+  bottom:14px;
+  transform:translateX(-50%);
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  gap:8px;
+  text-decoration:none;
+  color:rgba(232,234,240,.75);
+  font-size:12px;
+  letter-spacing:.2px;
+}
+.scrollCue:hover{filter:brightness(1.12)}
+.chev{
+  width:10px;
+  height:10px;
+  border-right:2px solid rgba(232,234,240,.65);
+  border-bottom:2px solid rgba(232,234,240,.65);
+  transform: rotate(45deg);
+  animation: bounce 1.4s ease-in-out infinite;
+}
+
+@keyframes bounce{
+  0%,100%{transform:translateY(0) rotate(45deg);opacity:.7}
+  50%{transform:translateY(6px) rotate(45deg);opacity:1}
+}
+@keyframes float1{
+  0%,100%{transform:translate(0,0) scale(1)}
+  50%{transform:translate(24px,18px) scale(1.05)}
+}
+@keyframes float2{
+  0%,100%{transform:translate(0,0) scale(1)}
+  50%{transform:translate(-22px,14px) scale(1.06)}
+}
+@keyframes float3{
+  0%,100%{transform:translate(0,0) scale(1)}
+  50%{transform:translate(16px,-18px) scale(1.05)}
+}
+@keyframes gridPan{
+  0%{transform:translate(0,0)}
+  100%{transform:translate(-60px,-60px)}
+}
+
+body.heroCollapsed .scrollCue{opacity:0;pointer-events:none}
+
+@media (prefers-reduced-motion: reduce){
+  .blob,.gridGlow,.chev,.heroInner > *{animation:none !important; transform:none !important; opacity:1 !important}
+  html{scroll-behavior:auto}
+}
 
 .topbar{
   display:flex;
@@ -100,6 +353,8 @@ code{background:rgba(255,255,255,.06);padding:2px 6px;border-radius:6px}
 }
 .panelTitle{font-weight:800}
 .panelMeta{font-size:12px;color:var(--muted)}
+
+.mapPanel{position:relative}
 
 .map{
   height: calc(100vh - 92px - 28px);
@@ -424,5 +679,8 @@ code{background:rgba(255,255,255,.06);padding:2px 6px;border-radius:6px}
   .split2{grid-template-columns:1fr}
   .chatMain{grid-template-columns:1fr}
   .chatConfigPanel,.chatPanel{min-height:auto}
+  .heroTitle{font-size:32px}
+  .bento{grid-template-columns:1fr}
+  .bentoSide{grid-template-rows:auto}
 }
 

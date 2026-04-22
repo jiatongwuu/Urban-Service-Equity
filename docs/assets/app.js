@@ -515,6 +515,12 @@ async function init() {
   setReportCluster("0");
 
   rebuildLayer();
+
+  const syncHeroScrollCue = () => {
+    document.body.classList.toggle("heroCollapsed", window.scrollY > 320);
+  };
+  window.addEventListener("scroll", syncHeroScrollCue, { passive: true });
+  syncHeroScrollCue();
 }
 
 els.applyFilters.addEventListener("click", () => {

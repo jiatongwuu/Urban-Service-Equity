@@ -52,11 +52,77 @@
 
         <button id="applyFilters" class="btn">Apply</button>
         <a class="btn secondary" href="#report">Jump to report</a>
+        <a class="btn secondary" href="#landing">Landing</a>
       </div>
     </header>
 
+    <section class="hero heroScene" id="landing">
+      <div class="heroBg" aria-hidden="true">
+        <div class="blob b1"></div>
+        <div class="blob b2"></div>
+        <div class="blob b3"></div>
+        <div class="gridGlow"></div>
+      </div>
+
+      <div class="heroInner">
+        <div class="heroEyebrow">Urban Service Equity</div>
+        <h1 class="heroTitle">See where housing stress meets service performance.</h1>
+        <p class="heroLead">
+          A grid-level map of equity scores and cluster archetypes—so you can spot hotspots, understand root causes, and
+          compare patterns across the city.
+        </p>
+
+        <div class="bento" aria-label="What you can do">
+          <div class="bentoCard">
+            <h2 class="bentoTitle">Explore equity hotspots</h2>
+            <p class="bentoText">Filter by equity range, click a grid cell, and see what makes it different—fast.</p>
+            <div class="bentoKpis">
+              <div class="kpi">
+                <div class="kpiVal">Equity</div>
+                <div class="kpiLab">0–100 score per grid</div>
+              </div>
+              <div class="kpi">
+                <div class="kpiVal">Clusters</div>
+                <div class="kpiLab">Archetypes that repeat</div>
+              </div>
+              <div class="kpi">
+                <div class="kpiVal">Root causes</div>
+                <div class="kpiLab">Z-scores vs city avg</div>
+              </div>
+            </div>
+          </div>
+          <div class="bentoSide">
+            <div class="bentoMini">
+              <span class="bentoTag">Triage</span>
+              <h3>From point → cluster report</h3>
+              <p>Click a point, jump to the explanation, and compare against its cluster baseline.</p>
+            </div>
+            <div class="bentoMini">
+              <span class="bentoTag">Ask</span>
+              <h3>Plain-language Q&amp;A</h3>
+              <p>Scroll to the report section to ask questions grounded in this page and indexed papers.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="heroActions">
+          <a class="btn" href="#mapPanel">Explore the map</a>
+          <a class="btn secondary" href="#report">How it works</a>
+        </div>
+
+        <div class="heroMeta">
+          Scroll to explore. Tip: use <b>Equity</b> to find hotspots, then <b>Cluster</b> to explain why.
+        </div>
+      </div>
+
+      <a class="scrollCue" href="#mapPanel" aria-label="Scroll to map">
+        <span class="scrollText">Scroll</span>
+        <span class="chev" aria-hidden="true"></span>
+      </a>
+    </section>
+
     <main class="main">
-      <section class="panel mapPanel">
+      <section id="mapPanel" class="panel mapPanel">
         <div class="panelHeader">
           <div class="panelTitle">Interactive map</div>
           <div class="panelMeta">
