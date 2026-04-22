@@ -37,8 +37,17 @@ Generated files are **not** checked into git. You create them locally or in Cola
 - `cluster_summary.csv` — Per-cluster counts and equity summaries  
 - `cluster_feature_zscores.csv` — Cluster vs. city z-scores for root-cause charts  
 - `metadata.json` — PCA weights, top features per cluster, cluster heuristics  
+- `grid_point_advice.json` — Per–grid (point-level) needs and suggested actions from indicator z-scores, optionally enriched from extra CSVs (see below)  
 - `grid_points.geojson` — (optional, `--write-geojson`) Points for the map  
 - `grid_place_map.csv` — Grid-to-place lookup (`neighborhood` + `supervisor district`) for place-aware chat queries
+
+**Optional point-level enrichment (defaults under `data/`)** — place these files when you have them; missing files are skipped:
+
+- `data/rent_dataset_module2.csv` — Housing inventory (unit-level); should include a `grid_id` column; adds median rent and neighborhood text to point advice.  
+- `data/grid_level_rent_311.csv` — Any extra per-grid fields merged by `grid_id` into the point advice `enrichment` object.  
+- `data/311_data.csv` — 311 case-level rows with `grid_id` and a request-type column (e.g. `case_type_name`); adds per-grid case counts and the most common type.
+
+Override paths with `python run_pipeline.py --help` (`--rent-module2`, `--grid-rent-311`, `--311-data`) alongside your main `--input` merged CSV.
 
 ### Rebuild place mapping after data updates
 

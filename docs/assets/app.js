@@ -6,6 +6,7 @@ const DATA_GEOJSON = new URL("grid_points.geojson", DATA_BASE).href;
 const DATA_META = new URL("metadata.json", DATA_BASE).href;
 const DATA_SUMMARY = new URL("cluster_summary.csv", DATA_BASE).href;
 const DATA_Z = new URL("cluster_feature_zscores.csv", DATA_BASE).href;
+const DATA_POINT_ADVICE = new URL("grid_point_advice.json", DATA_BASE).href;
 
 const els = {
   colorMode: document.getElementById("colorMode"),
@@ -38,6 +39,12 @@ const els = {
   priorityQueue: document.getElementById("priorityQueue"),
   pcaS: document.getElementById("pcaS"),
   pcaN: document.getElementById("pcaN"),
+
+  pointAdviceCompact: document.getElementById("pointAdviceCompact"),
+  pointAdviceCompactText: document.getElementById("pointAdviceCompactText"),
+  pointNeedPanelMeta: document.getElementById("pointNeedPanelMeta"),
+  pointDireNeeds: document.getElementById("pointDireNeeds"),
+  pointQueue: document.getElementById("pointQueue"),
 };
 
 els.dataPath.textContent = "outputs/grid_points.geojson";
@@ -50,6 +57,11 @@ let summaryRows = [];
 let zRows = [];
 let zChart = null;
 const EQUITY_HIST_BINS_MAX = 10;
+
+/** @type {Record<string, any> | null} */
+let pointAdviceByGrid = null;
+/** @type {object | null} */
+let selectedPointProps = null;
 
 function clusterName(c) {
   if (!meta?.config?.cluster_names) return `Cluster ${c}`;
@@ -191,10 +203,13 @@ function renderLegend() {
 function clearSelection() {
   els.selectionEmpty.classList.remove("hidden");
   els.selection.classList.add("hidden");
+  selectedPointProps = null;
+  renderPointLevelAdvice();
   window.dispatchEvent(new CustomEvent("equity-selection-changed"));
 }
 
 function setSelection(props) {
+  selectedPointProps = props;
   els.selectionEmpty.classList.add("hidden");
   els.selection.classList.remove("hidden");
   els.selGridId.textContent = props.grid_id ?? "—";
@@ -326,12 +341,113 @@ function renderHeuristics(c) {
     .join("");
 }
 
+function pointPriClass(p) {
+  const x = (p || "").toLowerCase();
+  if (x === "info") return "info";
+  return x;
+}
+
+function renderPointLevelAdvice() {
+  const setEmpty = (msg) => {
+    if (els.pointDireNeeds) els.pointDireNeeds.textContent = "—";
+    if (els.pointQueue) els.pointQueue.textContent = "—";
+    if (els.pointNeedPanelMeta) els.pointNeedPanelMeta.textContent = msg;
+    if (els.pointAdviceCompact) els.pointAdviceCompact.classList.add("hidden");
+  };
+
+  if (!selectedPointProps || !selectedPointProps.grid_id) {
+    setEmpty("Select a point on the map for grid-level needs and actions.");
+    if (els.pointAdviceCompact) els.pointAdviceCompact.classList.add("hidden");
+    return;
+  }
+
+  if (pointAdviceByGrid == null) {
+    setEmpty("Point advice file not found (re-run the pipeline to generate grid_point_advice.json).");
+    if (els.pointAdviceCompact) els.pointAdviceCompact.classList.add("hidden");
+    return;
+  }
+
+  if (Object.keys(pointAdviceByGrid).length === 0) {
+    setEmpty("Point advice is empty. Run the pipeline (it writes grid_point_advice.json from your grid scores and optional data/*.csv files).");
+    if (els.pointAdviceCompact) els.pointAdviceCompact.classList.add("hidden");
+    return;
+  }
+
+  const gid = String(selectedPointProps.grid_id);
+  const block = pointAdviceByGrid[gid] ?? null;
+  if (!block) {
+    setEmpty(`No point-level advice for grid ${gid} (re-run the pipeline with the same input grid set).`);
+    return;
+  }
+
+  const needs = (block.needs ?? []).filter((n) => n && n.title);
+  const sols = block.solutions ?? [];
+
+  if (els.pointNeedPanelMeta) {
+    const feat = (needs.find((n) => n.feature && n.feature !== "file_context") || {}).feature;
+    els.pointNeedPanelMeta.textContent = `Grid ${gid}` + (feat ? ` · strongest signal: ${feat}` : "");
+  }
+
+  if (els.pointDireNeeds) {
+    if (!needs.length) {
+      els.pointDireNeeds.textContent = "—";
+    } else {
+      els.pointDireNeeds.innerHTML = needs
+        .map((n) => {
+          const tag =
+            n.feature === "file_context" ? "Data files" : `${INDICATOR_LABELS[n.feature] || n.feature} (z ${n.z})`;
+          return `
+        <div class="needCard">
+          <div class="pill ${pointPriClass(n.priority)}">${n.priority} · ${tag}</div>
+          <div class="needTitle">${n.title}</div>
+          <div class="needDesc">${n.desc}</div>
+        </div>
+      `;
+        })
+        .join("");
+    }
+  }
+
+  if (els.pointQueue) {
+    if (!sols.length) {
+      els.pointQueue.textContent = "—";
+    } else {
+      els.pointQueue.innerHTML = sols
+        .map((s, i) => {
+          return `
+        <div class="queueItem">
+          <div class="queueNum">${String(i + 1).padStart(2, "0")}</div>
+          <div>
+            <div class="queueAction">${s}</div>
+            <div class="queueWhy">Point-level action (from feature templates)</div>
+          </div>
+        </div>
+      `;
+        })
+        .join("");
+    }
+  }
+
+  if (els.pointAdviceCompact && els.pointAdviceCompactText) {
+    const dataNeeds = needs.filter((n) => n.feature && n.feature !== "file_context");
+    const t1 = dataNeeds[0]?.title;
+    const t2 = dataNeeds[1]?.title;
+    els.pointAdviceCompactText.textContent = t1
+      ? t2
+        ? `${t1} · ${t2}`
+        : t1
+      : (needs[0] && needs[0].title) || "—";
+    els.pointAdviceCompact.classList.remove("hidden");
+  }
+}
+
 function setReportCluster(c) {
   const v = String(c);
   if (els.reportCluster) els.reportCluster.value = v;
   renderSummary(v);
   renderZChart(v);
   renderHeuristics(v);
+  renderPointLevelAdvice();
   window.dispatchEvent(new CustomEvent("equity-selection-changed"));
 }
 
@@ -368,21 +484,14 @@ function rebuildLayer() {
 }
 
 async function init() {
-  renderLegend();
-  clearSelection();
-
-  map = L.map("map", { zoomControl: true }).setView([37.77, -122.44], 12);
-  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-    maxZoom: 19,
-    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-  }).addTo(map);
-
-  const [m, g, summary, z] = await Promise.all([
+  const [m, g, summary, z, paJ] = await Promise.all([
     fetchJson(DATA_META),
     fetchJson(DATA_GEOJSON),
     parseCsv(DATA_SUMMARY),
     parseCsv(DATA_Z),
+    fetchJson(DATA_POINT_ADVICE).catch(() => null),
   ]);
+  pointAdviceByGrid = paJ?.by_grid != null ? paJ.by_grid : null;
   meta = m;
   geo = g;
   summaryRows = summary;
@@ -394,6 +503,13 @@ async function init() {
     })
   );
 
+  map = L.map("map", { zoomControl: true }).setView([37.77, -122.44], 12);
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    maxZoom: 19,
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+  }).addTo(map);
+
+  clearSelection();
   renderLegend();
   renderPca();
   setReportCluster("0");

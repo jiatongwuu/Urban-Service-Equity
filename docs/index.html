@@ -97,6 +97,10 @@
             <div class="k">Top features (cluster)</div>
             <div class="v" id="selTop">—</div>
           </div>
+          <div id="pointAdviceCompact" class="pointAdviceCompact hidden">
+            <div class="label">This grid (preview)</div>
+            <div id="pointAdviceCompactText" class="pointAdviceCompactText">—</div>
+          </div>
 
           <div class="actions">
             <a id="clusterLink" class="btn" href="#report">View cluster report</a>
@@ -213,6 +217,28 @@
           <div>
             <div class="label">Priority intervention queue</div>
             <div id="priorityQueue" class="queueWrap">—</div>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel" id="pointNeedPanel">
+        <div class="panelHeader">
+          <div class="panelTitle">This grid: needs & actions</div>
+          <div class="panelMeta" id="pointNeedPanelMeta">Select a point on the map for grid-level analysis</div>
+        </div>
+        <p class="smallNote" style="margin-top:0">
+          Uses each grid’s service/need feature signals (vs city) plus, when you provide them, your
+          <code>data/rent_dataset_module2.csv</code>, <code>data/grid_level_rent_311.csv</code>, and
+          <code>data/311_data.csv</code> for extra context. Cluster advice above is still the group-level view.
+        </p>
+        <div class="split2">
+          <div>
+            <div class="label">Point-level needs</div>
+            <div id="pointDireNeeds" class="needsWrap">—</div>
+          </div>
+          <div>
+            <div class="label">Suggested actions (this grid)</div>
+            <div id="pointQueue" class="queueWrap">—</div>
           </div>
         </div>
       </section>

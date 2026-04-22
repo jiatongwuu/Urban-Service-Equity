@@ -268,6 +268,18 @@ code{background:rgba(255,255,255,.06);padding:2px 6px;border-radius:6px}
 .pill.critical{background:rgba(239,68,68,.14);border-color:rgba(239,68,68,.35)}
 .pill.high{background:rgba(245,158,11,.14);border-color:rgba(245,158,11,.35)}
 .pill.med{background:rgba(34,197,94,.14);border-color:rgba(34,197,94,.35)}
+.pill.info{background:rgba(91,140,255,.12);border-color:rgba(91,140,255,.3)}
+.pointAdviceCompact{
+  margin:10px 0 0;
+  padding:10px 0 0;
+  border-top:1px solid rgba(255,255,255,.06);
+}
+.pointAdviceCompactText{
+  color:var(--muted);
+  font-size:12px;
+  line-height:1.45;
+  margin-top:6px;
+}
 .queueItem{
   display:flex;
   gap:10px;

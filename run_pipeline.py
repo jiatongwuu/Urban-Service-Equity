@@ -295,6 +295,102 @@ HEURISTICS_DEFAULT: Dict[int, dict] = {
     },
 }
 
+# Per-grid (point-level) need/solution templates keyed by pipeline features S* / N*
+POINT_FEATURE_TEMPLATES: Dict[str, Dict[str, object]] = {
+    "S1": {
+        "label": "Elevated 311 service load",
+        "desc": "This grid is above the citywide norm on scaled 311 request volume, indicating sustained demand on local services and infrastructure.",
+        "priority": lambda z: "HIGH" if z > 1.2 else "MED",
+        "actions": [
+            "Triage open requests by age and recurrence; add surge capacity in this grid for street and sidewalk work.",
+            "Pair high-volume request blocks with a single district liaison to stop duplicate routing across agencies.",
+            "Offer proactive inspections where repeat categories cluster, not only complaint-driven visits.",
+        ],
+    },
+    "S2": {
+        "label": "Slow 311 case resolution (relative to city norm)",
+        "desc": "Resolution time signals are lower than a typical part of the city after scaling—cases tend to run longer to close here.",
+        "priority": lambda z: "CRITICAL" if z < -1.5 else "HIGH" if z < -0.8 else "MED",
+        "actions": [
+            "Audit any tickets open longer than 30 days; assign an owner to older cases instead of re-routing in circles.",
+            "Escalate repeat addresses to a small weekly huddle (DPW, DPH, HSOC as relevant) until backlog clears.",
+            "Publish an SLA for first response in this area so residents see predictable timelines.",
+        ],
+    },
+    "S3": {
+        "label": "Low service diversity in 311 mix",
+        "desc": "The mix of 311 service types here is more concentrated than a typical area—suggesting a narrower set of service channels or a routing bottleneck.",
+        "priority": lambda z: "MED",
+        "actions": [
+            "Check whether categories are under-filed (online vs phone) and add multilingual help for filing.",
+            "Route a sample of “wrong department” handoffs to root-cause the narrow mix.",
+        ],
+    },
+    "S4_pos": {
+        "label": "Underweight positive amenities & maintenance",
+        "desc": "Streets, trees, rec/parks, and similar proactive requests are a smaller share than typical, which can understate unmet need.",
+        "priority": lambda z: "MED",
+        "actions": [
+            "Schedule a corridor walk to log maintenance needs that residents may not 311 for.",
+            "Prioritize one visible improvement (trees, streetlights, or park maintenance) to lift utilization trust.",
+        ],
+    },
+    "S4_neg": {
+        "label": "Disorder, safety, and encampment-related pressure",
+        "desc": "A larger share of requests here is in encampment, graffiti, vehicle, and similar categories relative to the city—livability and safety are under stress.",
+        "priority": lambda z: "CRITICAL" if z > 1.5 else "HIGH",
+        "actions": [
+            "Coordinate a joint response (street cleaning + outreach + rehousing) instead of one-off clearances.",
+            "Target graffiti and abandoned-vehicle backlogs in the worst blocks on a 48–72h cycle.",
+        ],
+    },
+    "N1": {
+        "label": "Housing density and unit mix pressure",
+        "desc": "The ratio of people and bedrooms to available space is high compared with typical—consistent with more intensive use of the housing stock.",
+        "priority": lambda z: "HIGH" if z > 1.0 else "MED",
+        "actions": [
+            "Pair housing inspections with voluntary tenant interviews (community org present) to surface overcrowding safely.",
+            "Map illegal conversions and subunits against permits to close the riskiest gaps first.",
+        ],
+    },
+    "N2": {
+        "label": "Space and crowding stress",
+        "desc": "Crowding-related signals (space per resident) are more extreme than in most of the city.",
+        "priority": lambda z: "CRITICAL" if z > 1.5 else "HIGH",
+        "actions": [
+            "Offer relocation assistance and legal aid where crowding is tied to unaffordability.",
+            "Fast-track any secondary-unit permits that safely add capacity on underused lots nearby.",
+        ],
+    },
+    "N3": {
+        "label": "Older stock and rent-control exposure",
+        "desc": "Property age and rent-control mix suggest deferred maintenance and tenant stability issues may be concentrated here.",
+        "priority": lambda z: "MED",
+        "actions": [
+            "Run targeted health-and-safety outreach to rent-controlled stock with the worst maintenance histories.",
+            "Bundle small grants for emergency repairs to prevent displacement from code violations.",
+        ],
+    },
+    "N4": {
+        "label": "Affordability and rent burden",
+        "desc": "Affordability need signals are higher than a typical area—families are stretched relative to their housing options.",
+        "priority": lambda z: "HIGH" if z > 0.8 else "MED",
+        "actions": [
+            "Connect high-burden blocks to in-language counseling on rights, benefits, and relocation payments.",
+            "Prioritize affordable infill and basement legalization where the pipeline already allows it.",
+        ],
+    },
+    "N5": {
+        "label": "Tenure and turnover risk",
+        "desc": "Shorter or unstable tenure patterns show up more strongly here, which can reduce political voice and maintenance investment.",
+        "priority": lambda z: "MED",
+        "actions": [
+            "Stabilize turnover with outreach at natural lease-renewal windows.",
+            "Track eviction-adjacent 311 surges as an early warning for displacement.",
+        ],
+    },
+}
+
 
 @dataclass(frozen=True)
 class Config:
@@ -315,8 +411,15 @@ def _ensure_dir(path: str) -> None:
 
 
 def _write_json(path: str, payload: dict) -> None:
+    def _default(obj: object) -> object:
+        if isinstance(obj, (np.integer, np.floating)):
+            return float(obj) if isinstance(obj, np.floating) else int(obj)
+        if isinstance(obj, np.ndarray):
+            return obj.tolist()
+        raise TypeError(f"Not JSON serializable: {type(obj)}")
+
     with open(path, "w", encoding="utf-8") as f:
-        json.dump(payload, f, indent=2, ensure_ascii=False)
+        json.dump(payload, f, indent=2, ensure_ascii=False, default=_default)
 
 
 def _require_columns(df: pd.DataFrame, required: List[str], context: str) -> None:
@@ -580,6 +683,257 @@ def points_to_geojson(df: pd.DataFrame, *, id_col: str = "grid_id") -> dict:
     return {"type": "FeatureCollection", "features": feats}
 
 
+def _first_existing_column(df: pd.DataFrame, names: List[str]) -> str | None:
+    for n in names:
+        if n in df.columns:
+            return n
+    return None
+
+
+def _normalize_grid_id(s: object) -> str:
+    t = str(s).strip()
+    if t.endswith(".0") and t[:-2].isdigit():
+        t = t[:-2]
+    return t
+
+
+def _read_optional_csv(path: str | None) -> pd.DataFrame | None:
+    if not path or not os.path.isfile(path):
+        return None
+    return pd.read_csv(path, low_memory=False)
+
+
+def _enrichment_from_rent_module2(path: str | None) -> Dict[str, dict]:
+    """Per-grid aggregates from unit-level rent inventory (expects grid_id)."""
+    df = _read_optional_csv(path)
+    if df is None:
+        return {}
+    gcol = _first_existing_column(df, ["grid_id", "Grid_ID", "GRID_ID", "grid id"])
+    if not gcol:
+        print(f"[point advice] {path!r} has no grid_id column; skipping rent inventory enrichment.")
+        return {}
+    out: Dict[str, dict] = {}
+    df = df.copy()
+    df["_gid"] = df[gcol].map(_normalize_grid_id)
+    for gid, sub in df.groupby("_gid"):
+        d: dict = {}
+        if "monthly_rent_clean" in sub.columns:
+            med = pd.to_numeric(sub["monthly_rent_clean"], errors="coerce").median()
+            if pd.notna(med):
+                d["rent_median_usd"] = float(med)
+        if "unit_count_clean" in sub.columns:
+            d["n_inventory_units"] = int(pd.to_numeric(sub["unit_count_clean"], errors="coerce").sum())
+        nhood = _first_existing_column(sub, ["analysis_neighborhood", "neighborhood", "NEIGHBORHOOD"])
+        if nhood and sub[nhood].notna().any():
+            d["primary_neighborhood"] = str(sub[nhood].mode().iloc[0]) if len(sub[nhood].mode()) else None
+        if d:
+            out[str(gid)] = d
+    print(f"[point advice] Enriched {len(out)} grid(s) from rent inventory CSV.")
+    return out
+
+
+def _enrichment_from_grid_level_rent_311(path: str | None) -> Dict[str, dict]:
+    """
+    Optional grid-level file (e.g. grid_level_rent_311.csv): merge any extra descriptive fields
+    that are not already in df_eq, keyed by grid_id.
+    """
+    df = _read_optional_csv(path)
+    if df is None:
+        return {}
+    gcol = _first_existing_column(df, ["grid_id", "Grid_ID", "GRID_ID", "grid id"])
+    if not gcol:
+        print(f"[point advice] {path!r} has no grid_id column; skipping grid-level merge.")
+        return {}
+    skip = {gcol, "lat", "lon", "latitude", "longitude"}
+    extra_cols = [c for c in df.columns if c not in skip and not str(c).startswith("Unnamed")]
+    if not extra_cols:
+        return {}
+    out: Dict[str, dict] = {}
+    df = df.copy()
+    df["_gid"] = df[gcol].map(_normalize_grid_id)
+    for gid, sub in df.groupby("_gid"):
+        row = sub.iloc[0]
+        d = {c: (None if pd.isna(row[c]) else (float(row[c]) if isinstance(row[c], (int, float, np.floating)) else str(row[c]))) for c in extra_cols[:12]}
+        out[str(gid)] = {"grid_file_extras": d}
+    print(f"[point advice] Merged {len(out)} row(s) from grid-level rent/311 file.")
+    return out
+
+
+def _enrichment_from_311_cases(path: str | None) -> Dict[str, dict]:
+    """Per-grid summary from case-level 311 data (grid_id + category column)."""
+    df = _read_optional_csv(path)
+    if df is None:
+        return {}
+    gcol = _first_existing_column(df, ["grid_id", "Grid_ID", "GRID_ID", "grid id"])
+    if not gcol:
+        print(f"[point advice] {path!r} has no grid_id column; skipping 311 case enrichment.")
+        return {}
+    cat_col = _first_existing_column(
+        df,
+        [
+            "case_type_name",
+            "Case_Type",
+            "Request_Category",
+            "service_type",
+            "Service_Type",
+            "Category",
+            "REQUEST_TYPE",
+        ],
+    )
+    if not cat_col:
+        print(f"[point advice] {path!r} has no recognized request category column; only counting rows per grid.")
+    out: Dict[str, dict] = {}
+    df = df.copy()
+    df["_gid"] = df[gcol].map(_normalize_grid_id)
+    for gid, sub in df.groupby("_gid"):
+        d: dict = {"n_311_cases": int(len(sub))}
+        if cat_col:
+            modes = sub[cat_col].dropna().astype(str).value_counts()
+            if len(modes):
+                d["top_311_type"] = str(modes.index[0])
+                d["top_311_share"] = float(modes.iloc[0] / max(len(sub), 1))
+        if d:
+            out[str(gid)] = d
+    print(f"[point advice] Enriched {len(out)} grid(s) from 311 case file.")
+    return out
+
+
+def _merge_enrichments(*parts: Dict[str, dict]) -> Dict[str, dict]:
+    merged: Dict[str, dict] = {}
+    for p in parts:
+        for k, v in p.items():
+            if k not in merged:
+                merged[k] = {}
+            merged[k] = {**merged[k], **v}
+    return merged
+
+
+def _enrichment_text_blob(gid: str, e: dict) -> str:
+    if not e:
+        return ""
+    parts: List[str] = []
+    if e.get("rent_median_usd") is not None:
+        n = e.get("n_inventory_units", "")
+        parts.append(
+            f"Housing inventory in this file: median rent about ${e['rent_median_usd']:,.0f}/mo"
+            + (f" across {n} unit rows." if n != "" else ".")
+        )
+    if e.get("top_311_type"):
+        parts.append(
+            f"Most common 311 type in the case file: {e['top_311_type']}"
+            + (f" ({e.get('top_311_share', 0) * 100:.0f}% of local cases)." if e.get("top_311_share") is not None else ".")
+        )
+    if e.get("n_311_cases") and not e.get("top_311_type"):
+        parts.append(f"311 case file: {e['n_311_cases']:,} row(s) tagged to this grid.")
+    if e.get("primary_neighborhood"):
+        parts.append(f"Neighborhood (inventory): {e['primary_neighborhood']}.")
+    return " ".join(parts)
+
+
+def _problem_score(feat: str, z: float) -> float:
+    if feat == "S2":
+        return max(0.0, float(-z))
+    if feat in ("S1", "S4_neg", "N1", "N2", "N3", "N4", "N5"):
+        return max(0.0, float(z))
+    if feat == "S3":
+        return max(0.0, float(-z)) * 0.5
+    if feat == "S4_pos":
+        return max(0.0, float(-z)) * 0.4
+    return 0.0
+
+
+def build_point_level_advice(
+    df_eq: pd.DataFrame,
+    enrichment: Dict[str, dict],
+    *,
+    features: List[str] | None = None,
+) -> dict:
+    """
+    For each grid_id, top feature-level drivers vs city (z-scores) + need cards + 3 action bullets.
+    """
+    feats = features or ["S1", "S2", "S3", "S4_pos", "S4_neg", "N1", "N2", "N3", "N4", "N5"]
+    mu = df_eq[feats].mean()
+    sd = df_eq[feats].std(ddof=0).replace(0, np.nan)
+
+    by_grid: dict = {}
+    for row in df_eq.itertuples(index=False):
+        d = row._asdict()
+        gid = str(d.get("grid_id", ""))
+        e = enrichment.get(gid, {})
+
+        zmap: Dict[str, float] = {}
+        for f in feats:
+            m, s = mu[f], sd[f]
+            if pd.isna(s) or s == 0:
+                zmap[f] = 0.0
+            else:
+                zmap[f] = float((d[f] - m) / s)
+
+        scored = sorted(
+            ((f, _problem_score(f, zmap[f]), zmap[f]) for f in feats),
+            key=lambda x: -x[1],
+        )
+        # keep drivers with any meaningful stress
+        top = [(f, s, zv) for f, s, zv in scored if s > 0.15][:3]
+        if not top:
+            # fall back: strongest |z| so the UI still has copy
+            top = sorted(((f, abs(zmap[f]), zmap[f]) for f in feats), key=lambda x: -x[1])[:2]
+            top = [(f, s, zv) for f, s, zv in top]
+
+        needs: List[dict] = []
+        action_pool: List[str] = []
+        for rank, (feat, _sc, zv) in enumerate(top, start=1):
+            tpl = POINT_FEATURE_TEMPLATES.get(feat)
+            if not tpl:
+                continue
+            pr_fn = tpl["priority"]
+            priority = pr_fn(zv) if callable(pr_fn) else str(pr_fn)
+            needs.append(
+                {
+                    "rank": rank,
+                    "feature": feat,
+                    "z": round(zv, 3),
+                    "priority": str(priority),
+                    "title": str(tpl["label"]),
+                    "desc": str(tpl["desc"]),
+                }
+            )
+            for a in tpl.get("actions", [])[:4]:
+                if a not in action_pool:
+                    action_pool.append(a)
+                if len(action_pool) >= 8:
+                    break
+            if len(needs) >= 3:
+                break
+
+        sol = action_pool[:3]
+        if len(sol) < 3:
+            sol = (sol + ["Tie public messaging to visible fixes on this block (trees, lights, or sidewalk) so 311 is trusted."])[:3]
+
+        extra = _enrichment_text_blob(gid, e)
+        if extra:
+            needs.insert(
+                0,
+                {
+                    "rank": 0,
+                    "feature": "file_context",
+                    "z": 0.0,
+                    "priority": "INFO",
+                    "title": "Local data files for this grid",
+                    "desc": extra,
+                },
+            )
+
+        by_grid[gid] = {
+            "needs": needs,
+            "solutions": sol,
+        }
+        if e:
+            by_grid[gid]["enrichment"] = e
+
+    return by_grid
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run clustering + equity scoring pipeline and export dashboard artifacts.")
     parser.add_argument(
@@ -594,6 +948,22 @@ def main() -> None:
     parser.add_argument("--k", type=int, default=4, help="KMeans clusters (default 4).")
     parser.add_argument("--random-state", type=int, default=42, help="Random seed (default 42).")
     parser.add_argument("--write-geojson", action="store_true", help="Also write GeoJSON point layers.")
+    parser.add_argument(
+        "--rent-module2",
+        default=os.path.join("data", "rent_dataset_module2.csv"),
+        help="Optional housing inventory CSV (with grid_id) to enrich per-grid need/solution text.",
+    )
+    parser.add_argument(
+        "--grid-rent-311",
+        default=os.path.join("data", "grid_level_rent_311.csv"),
+        help="Optional grid-level rent+311 CSV merged on grid_id (extra fields merged into point advice).",
+    )
+    parser.add_argument(
+        "--311-data",
+        default=os.path.join("data", "311_data.csv"),
+        dest="cases_311",
+        help="Optional 311 case-level CSV (with grid_id) for category + volume enrichment. Default: data/311_data.csv",
+    )
     args = parser.parse_args()
 
     cfg = Config(k=args.k, random_state=args.random_state)
@@ -617,6 +987,12 @@ def main() -> None:
     z_df, z_meta = zscore_feature_importance(df_eq)
     cluster_summary = make_cluster_summary(df_eq, cfg=cfg)
 
+    e_rent = _enrichment_from_rent_module2(args.rent_module2)
+    e_gr = _enrichment_from_grid_level_rent_311(args.grid_rent_311)
+    e_311 = _enrichment_from_311_cases(args.cases_311)
+    enrichment = _merge_enrichments(e_rent, e_gr, e_311)
+    point_by_grid = build_point_level_advice(df_eq, enrichment)
+
     # Join top-3 features onto scored grids (for map tooltips)
     top_map = z_meta["top3_features_per_cluster"]
     df_eq["top3_features"] = df_eq["cluster"].astype(int).map(
@@ -628,10 +1004,27 @@ def main() -> None:
     cluster_summary_path = os.path.join(args.output_dir, "cluster_summary.csv")
     zscores_path = os.path.join(args.output_dir, "cluster_feature_zscores.csv")
     metadata_path = os.path.join(args.output_dir, "metadata.json")
+    point_advice_path = os.path.join(args.output_dir, "grid_point_advice.json")
 
     df_eq.to_csv(grid_results_path, index=False)
     cluster_summary.to_csv(cluster_summary_path, index=False)
     z_df.to_csv(zscores_path)
+
+    _write_json(
+        point_advice_path,
+        {
+            "version": 1,
+            "ingestion": {
+                "rent_module2_csv": args.rent_module2,
+                "grids_with_rent_file_enrichment": len(e_rent),
+                "grid_rent_311_csv": args.grid_rent_311,
+                "grids_with_grid_file_row": len(e_gr),
+                "cases_311_csv": args.cases_311,
+                "grids_with_case_stats": len(e_311),
+            },
+            "by_grid": point_by_grid,
+        },
+    )
 
     _write_json(
         metadata_path,
@@ -651,6 +1044,7 @@ def main() -> None:
                 "grid_results_csv": os.path.basename(grid_results_path),
                 "cluster_summary_csv": os.path.basename(cluster_summary_path),
                 "cluster_feature_zscores_csv": os.path.basename(zscores_path),
+                "grid_point_advice_json": os.path.basename(point_advice_path),
             },
         },
     )
@@ -670,6 +1064,7 @@ def main() -> None:
     print(f"Wrote: {cluster_summary_path}")
     print(f"Wrote: {zscores_path}")
     print(f"Wrote: {metadata_path}")
+    print(f"Wrote: {point_advice_path} ({len(point_by_grid):,} grids)")
 
 
 if __name__ == "__main__":
