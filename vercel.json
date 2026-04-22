@@ -1,0 +1,6 @@
+{
+  "buildCommand": "npm install",
+  "framework": null, 
+  "outputDirectory": "docs",
+  "ignoreCommand": "exit 1"
+}

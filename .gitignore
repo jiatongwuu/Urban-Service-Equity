@@ -36,3 +36,15 @@ Thumbs.db
 
 # Large input datasets (GitHub file limit ~100MB; use --input or MERGED_RENT_311_CSV)
 merged_rent_311.csv
+
+# RAG sources / indexes (team can store papers in Drive locally)
+data/papers/
+data/index/
+.vercel
+.env*.local
+
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*

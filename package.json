@@ -1,0 +1,12 @@
+{
+  "name": "urban-service-equity-rag-api",
+  "private": true,
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.49.1",
+    "openai": "^4.57.0"
+  }
+}
+

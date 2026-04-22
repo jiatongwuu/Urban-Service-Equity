@@ -68,6 +68,17 @@ Python 3.10+ recommended.
 
 ---
 
+## RAG (papers → cited answers)
+
+This repo can support a **RAG backend** so your chatbot can cite **social science papers** while still using the static GitHub Pages dashboard.
+
+- Put PDFs in a Drive folder (or local) and index them into **Supabase pgvector**
+- Deploy a small API (Vercel) that does retrieve+generate and returns citations
+
+Start here: `rag/README.md`.
+
+---
+
 ## Running the pipeline
 
 ### Default input (Google Colab + Drive)

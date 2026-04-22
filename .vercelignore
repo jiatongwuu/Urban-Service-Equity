@@ -1,0 +1,7 @@
+requirements.txt
+requirements-rag.txt
+run_pipeline.py
+rag/
+.venv/
+__pycache__/
+*.py
