@@ -56,8 +56,73 @@
       </div>
     </header>
 
+    <section class="hero heroScene" id="landing">
+      <div class="heroBg" aria-hidden="true">
+        <div class="blob b1"></div>
+        <div class="blob b2"></div>
+        <div class="blob b3"></div>
+        <div class="gridGlow"></div>
+      </div>
+
+      <div class="heroInner">
+        <div class="heroEyebrow">Urban Service Equity</div>
+        <h1 class="heroTitle">See where housing stress meets service performance.</h1>
+        <p class="heroLead">
+          A grid-level map of equity scores and cluster archetypes—so you can spot hotspots, understand root causes, and
+          compare patterns across the city.
+        </p>
+
+        <div class="bento" aria-label="What you can do">
+          <div class="bentoCard">
+            <h2 class="bentoTitle">Explore equity hotspots</h2>
+            <p class="bentoText">Filter by equity range, click a grid cell, and see what makes it different—fast.</p>
+            <div class="bentoKpis">
+              <div class="kpi">
+                <div class="kpiVal">Equity</div>
+                <div class="kpiLab">0–100 score per grid</div>
+              </div>
+              <div class="kpi">
+                <div class="kpiVal">Clusters</div>
+                <div class="kpiLab">Archetypes that repeat</div>
+              </div>
+              <div class="kpi">
+                <div class="kpiVal">Root causes</div>
+                <div class="kpiLab">Z-scores vs city avg</div>
+              </div>
+            </div>
+          </div>
+          <div class="bentoSide">
+            <div class="bentoMini">
+              <span class="bentoTag">Triage</span>
+              <h3>From point → cluster report</h3>
+              <p>Click a point, jump to the explanation, and compare against its cluster baseline.</p>
+            </div>
+            <div class="bentoMini">
+              <span class="bentoTag">Explain</span>
+              <h3>Indicators that drive difference</h3>
+              <p>See which service/need dimensions differ most, then map them to actionable interventions.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="heroActions">
+          <a class="btn" href="#mapPanel">Explore the map</a>
+          <a class="btn secondary" href="#report">How it works</a>
+        </div>
+
+        <div class="heroMeta">
+          Scroll to explore. Tip: use <b>Equity</b> to find hotspots, then <b>Cluster</b> to explain why.
+        </div>
+      </div>
+
+      <a class="scrollCue" href="#mapPanel" aria-label="Scroll to map">
+        <span class="scrollText">Scroll</span>
+        <span class="chev" aria-hidden="true"></span>
+      </a>
+    </section>
+
     <main class="main">
-      <section class="panel mapPanel">
+      <section id="mapPanel" class="panel mapPanel">
         <div class="panelHeader">
           <div class="panelTitle">Interactive map</div>
           <div class="panelMeta">
@@ -215,6 +280,64 @@
       integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
       crossorigin=""
     ></script>
+    <script>
+      (function () {
+        const mapPanel = document.getElementById("mapPanel");
+        const landing = document.getElementById("landing");
+        const heroBg = landing?.querySelector?.(".heroBg");
+        if (!mapPanel || !landing) return;
+
+        const reduceMotion =
+          window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+        // Add a class when the hero is no longer the main view.
+        function onScroll() {
+          const r = landing.getBoundingClientRect();
+          const collapsed = r.bottom < window.innerHeight * 0.65;
+          document.body.classList.toggle("heroCollapsed", collapsed);
+        }
+        onScroll();
+        window.addEventListener("scroll", onScroll, { passive: true });
+
+        // --- Momentum effects (landing only) ---
+        if (reduceMotion) return;
+
+        // Parallax with inertia (mouse + scroll)
+        let targetX = 0,
+          targetY = 0,
+          curX = 0,
+          curY = 0,
+          raf = 0;
+
+        function tick() {
+          // critically damped-ish easing
+          curX += (targetX - curX) * 0.08;
+          curY += (targetY - curY) * 0.08;
+          if (heroBg) {
+            heroBg.style.setProperty("--parX", `${curX.toFixed(2)}px`);
+            heroBg.style.setProperty("--parY", `${curY.toFixed(2)}px`);
+          }
+          raf = requestAnimationFrame(tick);
+        }
+        raf = requestAnimationFrame(tick);
+
+        window.addEventListener(
+          "mousemove",
+          (e) => {
+            const nx = (e.clientX / window.innerWidth) * 2 - 1;
+            const ny = (e.clientY / window.innerHeight) * 2 - 1;
+            targetX = nx * 10;
+            targetY = ny * 8;
+          },
+          { passive: true }
+        );
+
+        // clean up on nav away (best-effort)
+        window.addEventListener("pagehide", () => {
+          if (raf) cancelAnimationFrame(raf);
+        });
+      })();
+    </script>
     <script type="module" src="assets/app.js"></script>
   </body>
 </html>

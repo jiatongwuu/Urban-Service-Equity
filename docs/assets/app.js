@@ -367,8 +367,26 @@ async function init() {
   renderLegend();
   clearSelection();
 
-  map = L.map("map", { zoomControl: true }).setView([37.77, -122.44], 12);
+  // Restrict browsing to San Francisco area (no zooming out to world).
+  // Tighter SF-focused bounds (reduced west/ocean area).
+  const SF_BOUNDS = L.latLngBounds(
+    [37.703, -122.54], // SW (approx SF edge)
+    [37.835, -122.345] // NE (approx SF edge)
+  );
+
+  map = L.map("map", {
+    zoomControl: true,
+    maxBounds: SF_BOUNDS,
+    maxBoundsViscosity: 0.85,
+    // Prevent zooming out beyond the SF-wide view.
+    minZoom: 13,
+    maxZoom: 19,
+  }).fitBounds(SF_BOUNDS, { padding: [10, 10] });
+  // Nudge initial framing slightly upward (north) for nicer composition.
+  map.panBy([0, 55], { animate: false });
+
   L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    minZoom: 12,
     maxZoom: 19,
     attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
   }).addTo(map);
