@@ -1,6 +1,7 @@
 // Minimal client helper for the static site to call a deployed RAG backend.
 // Usage: set window.RAG_API_BASE = "https://<vercel-app>.vercel.app"
-window.RAG_API_BASE = "https://urban-service-equity.vercel.app";
+// (Do not overwrite if already set by the page.)
+window.RAG_API_BASE = window.RAG_API_BASE || "https://urban-service-equity.vercel.app";
 
 export async function ragChat({ question, messages = [], systemPrompt = "", model = "gpt-4o-mini", topK = 8 }) {
   const base = (window.RAG_API_BASE || "").replace(/\/$/, "");

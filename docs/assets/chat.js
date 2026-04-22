@@ -1,3 +1,5 @@
+import { ragChat } from "./rag_client.js";
+
 const DATA_BASE = new URL("../outputs/", import.meta.url);
 const DATA_GEOJSON = new URL("grid_points.geojson", DATA_BASE).href;
 const DATA_META = new URL("metadata.json", DATA_BASE).href;
@@ -84,8 +86,10 @@ const els = {
   modelSelect: document.getElementById("modelSelect"),
   customModel: document.getElementById("customModel"),
   apiKey: document.getElementById("apiKey"),
+  ragApiBase: document.getElementById("ragApiBase"),
   temperature: document.getElementById("temperature"),
   maxTokens: document.getElementById("maxTokens"),
+  topK: document.getElementById("topK"),
   contextMode: document.getElementById("contextMode"),
   clusterContext: document.getElementById("clusterContext"),
   gridContext: document.getElementById("gridContext"),
@@ -173,8 +177,10 @@ function loadSavedState() {
     els.modelSelect.value = saved.model ?? els.modelSelect.value;
     els.customModel.value = saved.customModel ?? "";
     els.apiKey.value = saved.apiKey ?? "";
+    els.ragApiBase.value = saved.ragApiBase ?? (window.RAG_API_BASE || "https://urban-service-equity.vercel.app");
     els.temperature.value = String(saved.temperature ?? 0.3);
     els.maxTokens.value = String(saved.maxTokens ?? 900);
+    els.topK.value = String(saved.topK ?? 8);
     els.contextMode.value = saved.contextMode ?? "global";
     els.clusterContext.value = saved.clusterContext ?? "0";
     els.gridContext.value = saved.gridContext ?? "";
@@ -195,8 +201,10 @@ function saveState() {
     model: els.modelSelect.value,
     customModel: els.customModel.value,
     apiKey: els.apiKey.value,
+    ragApiBase: els.ragApiBase.value,
     temperature: Number(els.temperature.value),
     maxTokens: Number(els.maxTokens.value),
+    topK: Number(els.topK.value),
     contextMode: els.contextMode.value,
     clusterContext: els.clusterContext.value,
     gridContext: els.gridContext.value,
@@ -697,37 +705,45 @@ function fullSystemPrompt(userQuery) {
 async function send() {
   const userText = els.userInput.value.trim();
   if (!userText) return;
-  const apiKey = els.apiKey.value.trim();
-  if (!apiKey) {
-    setStatus("Missing API key");
-    return;
-  }
+  const ragBase = (els.ragApiBase.value || "").trim();
+  if (!ragBase) return setStatus("Missing RAG API base URL");
+  window.RAG_API_BASE = ragBase;
 
   const model = selectedModel();
   const temperature = Number(els.temperature.value || 0.3);
   const maxTokens = Number(els.maxTokens.value || 900);
+  const topK = Number(els.topK.value || 8);
 
   state.chat.push({ role: "user", content: userText });
   state.chat = state.chat.slice(-MAX_HISTORY);
   els.userInput.value = "";
   renderChat();
-  setStatus(`Calling ${model}...`);
+  setStatus(`Calling RAG backend (${model})...`);
   saveState();
 
   try {
     const messages = [{ role: "system", content: fullSystemPrompt(userText) }, ...state.chat];
-    const rawContent = await callModel({
-      model,
-      apiKey,
+    const res = await ragChat({
+      question: userText,
       messages,
+      systemPrompt: fullSystemPrompt(userText),
+      model,
+      topK,
       temperature,
       maxTokens,
     });
-    const content = sanitizeAssistantText(rawContent);
-    state.chat.push({ role: "assistant", content });
+    const content = sanitizeAssistantText(String(res?.content ?? ""));
+    const cites = Array.isArray(res?.citations) ? res.citations : [];
+    const citeBlock = cites.length
+      ? `\n\nSources:\n${cites
+          .slice(0, 8)
+          .map((c) => `- [${c.ref}] ${c.source_title || c.source_id || "source"}${c.source_year ? ` (${c.source_year})` : ""}${c.source_url ? ` ${c.source_url}` : ""}`)
+          .join("\n")}`
+      : "\n\nSources: (none retrieved)";
+    state.chat.push({ role: "assistant", content: `${content}${citeBlock}` });
     state.chat = state.chat.slice(-MAX_HISTORY);
     renderChat();
-    setStatus(`Response received from ${model}`);
+    setStatus(`Response received (${cites.length} citations)`);
     saveState();
   } catch (err) {
     const msg = String(err?.message || err);
@@ -747,8 +763,10 @@ function bindEvents() {
     els.modelSelect,
     els.customModel,
     els.apiKey,
+    els.ragApiBase,
     els.temperature,
     els.maxTokens,
+    els.topK,
     els.contextMode,
     els.clusterContext,
     els.gridContext,
