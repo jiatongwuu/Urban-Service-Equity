@@ -18,7 +18,7 @@
     <header class="topbar">
       <div class="brand">
         <div class="title">Equity Dashboard</div>
-        <div class="subtitle">Map (Equity-first) → Cluster Report</div>
+        <div class="subtitle">Map (Equity-first) → Cluster report (ask a question below)</div>
       </div>
 
       <div class="controls">
@@ -52,7 +52,6 @@
 
         <button id="applyFilters" class="btn">Apply</button>
         <a class="btn secondary" href="#report">Jump to report</a>
-        <a class="btn secondary" href="./chat.html">Prompt Lab</a>
       </div>
     </header>
 
@@ -161,6 +160,32 @@
         </div>
       </section>
 
+      <section class="panel chatPanel reportChatPanel" aria-label="Ask a question about this cluster">
+        <div class="panelHeader">
+          <div class="panelTitle">Ask a question</div>
+          <div class="panelMeta" id="publicChatContextHint">Loading data…</div>
+        </div>
+
+        <p class="publicChatBlurb">Plain-language questions about what you see above. Answers use the numbers on this page and short excerpts from indexed research papers.</p>
+
+        <div id="publicChatStatus" class="chatHint">Loading…</div>
+
+        <div id="publicChatMessages" class="chatMessages"></div>
+
+        <div class="chatComposer">
+          <label class="visuallyHidden" for="publicChatInput">Your question</label>
+          <textarea
+            id="publicChatInput"
+            rows="3"
+            placeholder="For example: What should we do first here, and what would help most?"
+          ></textarea>
+          <div class="chatActions">
+            <button id="publicChatClear" type="button" class="btn secondary">Clear</button>
+            <button id="publicChatSend" type="button" class="btn">Send</button>
+          </div>
+        </div>
+      </section>
+
       <section class="panel">
         <div class="panelHeader">
           <div class="panelTitle">Root causes (z-score vs city avg)</div>
@@ -216,6 +241,7 @@
       crossorigin=""
     ></script>
     <script type="module" src="assets/app.js"></script>
+    <script type="module" src="assets/public_chat.js"></script>
   </body>
 </html>
 

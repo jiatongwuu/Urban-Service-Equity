@@ -1,13 +1,11 @@
 import { ragChat } from "./rag_client.js";
 
-const DATA_BASE = new URL("../outputs/", import.meta.url);
-const DATA_GEOJSON = new URL("grid_points.geojson", DATA_BASE).href;
-const DATA_META = new URL("metadata.json", DATA_BASE).href;
-const DATA_SUMMARY = new URL("cluster_summary.csv", DATA_BASE).href;
+// --- paths (module-relative) ---
+const DATA_BASE = new URL("../outputs/", import.meta.url).href;
 const DATA_RENT_CSV = new URL("rent_dataset_module2.csv", DATA_BASE).href;
 const SOCIOPAPER_TXT = new URL("../sociopaper/zahnow1.txt", import.meta.url).href;
 
-const STORAGE_KEY = "equity_prompt_lab_v1";
+const STORAGE_KEY = "equity_public_chat_v1";
 const MAX_HISTORY = 16;
 const SOCIOPAPER_ID = "zahnow1";
 const SOCIOPAPER_TOP_K = 5;
@@ -82,38 +80,35 @@ const STOPWORDS = new Set([
   "this", "into", "such", "when", "may", "more", "also", "how", "its", "who", "had", "any",
 ]);
 
+
+
+// --- DOM ---
 const els = {
-  modelSelect: document.getElementById("modelSelect"),
-  customModel: document.getElementById("customModel"),
-  apiKey: document.getElementById("apiKey"),
-  ragApiBase: document.getElementById("ragApiBase"),
-  temperature: document.getElementById("temperature"),
-  maxTokens: document.getElementById("maxTokens"),
-  topK: document.getElementById("topK"),
-  contextMode: document.getElementById("contextMode"),
-  clusterContext: document.getElementById("clusterContext"),
-  gridContext: document.getElementById("gridContext"),
-  systemPrompt: document.getElementById("systemPrompt"),
-  contextPreview: document.getElementById("contextPreview"),
-  chatMessages: document.getElementById("chatMessages"),
-  userInput: document.getElementById("userInput"),
-  sendBtn: document.getElementById("sendBtn"),
-  clearChat: document.getElementById("clearChat"),
-  refreshContext: document.getElementById("refreshContext"),
-  chatStatus: document.getElementById("chatStatus"),
+  contextHint: document.getElementById("publicChatContextHint"),
+  chatStatus: document.getElementById("publicChatStatus"),
+  chatMessages: document.getElementById("publicChatMessages"),
+  userInput: document.getElementById("publicChatInput"),
+  sendBtn: document.getElementById("publicChatSend"),
+  clearBtn: document.getElementById("publicChatClear"),
+  selection: document.getElementById("selection"),
+  selGridId: document.getElementById("selGridId"),
+  reportCluster: document.getElementById("reportCluster"),
 };
 
 const state = {
-  chat: [],
+  chat: /** @type {{role: "user"|"assistant"; content: string}[]} */ ([]),
+  /** Filled from app.js (no second GeoJSON download) */
   meta: null,
   geo: null,
   summaryRows: [],
   gridById: new Map(),
   summaryByCluster: new Map(),
+
   /** @type {{ id: number; text: string }[]} */
   sociopaperChunks: [],
   /** @type {{ addr: string; hood: string; rent: number; beds: number | null; baths: number | null; sqft: number | null; year: number | null; district: number | null }[]} */
   rentListings: [],
+  ready: false,
 };
 
 const DEFAULT_SYSTEM_PROMPT = `You are the assistant inside an urban service equity dashboard, but you behave like a normal helpful chat model: answer the user's actual question in a direct, natural tone.
@@ -141,8 +136,20 @@ When (and only when) explaining THIS dashboard's JSON, map, cluster report, or S
 
 For questions that are not about this dashboard, ignore the paragraph above if it would block a clear answer.`;
 
+function sanitizeAssistantText(text) {
+  // Light cleanup only. Do not globally replace words like "performance" or "z-score"—that breaks ML/STATS answers.
+  return String(text || "")
+    .replace(/\*\*"(.*?)"\*\*/g, "$1")
+    .replace(/\*\*“(.*?)”\*\*/g, "$1")
+    .replace(/\*\*'(.*?)'\*\*/g, "$1")
+    .replace(/\*\*\s*["“'](.*?)["”']\s*\*\*/g, "$1")
+    .replace(/\*\*(.*?)\*\*/g, "$1")
+    .replace(/__(.*?)__/g, "$1")
+    .replace(/[“”"]/g, "");
+}
+
 function setStatus(msg) {
-  els.chatStatus.textContent = msg;
+  if (els.chatStatus) els.chatStatus.textContent = msg;
 }
 
 function loadSavedState() {
@@ -150,17 +157,6 @@ function loadSavedState() {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return;
     const saved = JSON.parse(raw);
-    els.modelSelect.value = saved.model ?? els.modelSelect.value;
-    els.customModel.value = saved.customModel ?? "";
-    els.apiKey.value = saved.apiKey ?? "";
-    els.ragApiBase.value = saved.ragApiBase ?? (window.RAG_API_BASE || "https://urban-service-equity.vercel.app");
-    els.temperature.value = String(saved.temperature ?? 0.3);
-    els.maxTokens.value = String(saved.maxTokens ?? 900);
-    els.topK.value = String(saved.topK ?? 8);
-    els.contextMode.value = saved.contextMode ?? "global";
-    els.clusterContext.value = saved.clusterContext ?? "0";
-    els.gridContext.value = saved.gridContext ?? "";
-    els.systemPrompt.value = saved.systemPrompt ?? DEFAULT_SYSTEM_PROMPT;
     state.chat = Array.isArray(saved.chat)
       ? saved.chat.slice(-MAX_HISTORY).map((m) => ({
           ...m,
@@ -168,50 +164,98 @@ function loadSavedState() {
         }))
       : [];
   } catch {
-    // ignore malformed local storage
+    // ignore
   }
 }
 
 function saveState() {
-  const payload = {
-    model: els.modelSelect.value,
-    customModel: els.customModel.value,
-    apiKey: els.apiKey.value,
-    ragApiBase: els.ragApiBase.value,
-    temperature: Number(els.temperature.value),
-    maxTokens: Number(els.maxTokens.value),
-    topK: Number(els.topK.value),
-    contextMode: els.contextMode.value,
-    clusterContext: els.clusterContext.value,
-    gridContext: els.gridContext.value,
-    systemPrompt: els.systemPrompt.value,
-    chat: state.chat.slice(-MAX_HISTORY),
+  localStorage.setItem(
+    STORAGE_KEY,
+    JSON.stringify({
+      chat: state.chat.slice(-MAX_HISTORY),
+    })
+  );
+}
+
+function isGridSelected() {
+  if (!els.selection || !els.selGridId) return false;
+  if (els.selection.classList.contains("hidden")) return false;
+  const gid = String(els.selGridId.textContent || "").trim();
+  return Boolean(gid && gid !== "—");
+}
+
+function reportClusterId() {
+  return String(els.reportCluster?.value ?? "0");
+}
+
+function clusterName(c) {
+  if (!state.meta?.config?.cluster_names) return `Cluster ${c}`;
+  return state.meta.config.cluster_names[String(c)] ?? state.meta.config.cluster_names[c] ?? `Cluster ${c}`;
+}
+
+function updateContextHint() {
+  if (!els.contextHint) return;
+  if (!state.ready) {
+    els.contextHint.textContent = "Loading data…";
+    return;
+  }
+  if (isGridSelected()) {
+    const gid = String(els.selGridId.textContent || "").trim();
+    els.contextHint.textContent = `Focused on the selected area (${gid})`;
+    return;
+  }
+  const c = reportClusterId();
+  els.contextHint.textContent = `Focused on: ${clusterName(c)}`;
+}
+
+function reindexFromDashboard() {
+  state.gridById.clear();
+  state.summaryByCluster.clear();
+
+  for (const row of state.summaryRows ?? []) {
+    state.summaryByCluster.set(String(row.cluster), row);
+  }
+  for (const feat of state.geo?.features ?? []) {
+    const id = String(feat?.properties?.grid_id ?? "");
+    if (id) state.gridById.set(id, feat.properties);
+  }
+}
+
+function contextPayload() {
+  const base = {
+    modeling_notes: {
+      overall_fairness_level: "0-100 index for how balanced service access and quality are across areas",
+      top3_gap_factors: "top 3 factors with the largest differences from city average in each cluster",
+    },
+    report_cluster_in_ui: reportClusterId(),
   };
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
-}
 
-function selectedModel() {
-  const custom = (els.customModel.value || "").trim();
-  return custom || els.modelSelect.value;
-}
+  if (isGridSelected()) {
+    const gid = String(els.selGridId.textContent || "").trim();
+    const row = state.gridById.get(gid) ?? null;
+    return {
+      mode: "grid",
+      ...base,
+      grid_id: gid,
+      grid_record: row,
+      cluster_summary: row ? state.summaryByCluster.get(String(row.cluster)) ?? null : null,
+      cluster_top_features: row
+        ? state.meta?.top3_features_per_cluster?.[String(row.cluster)] ??
+          state.meta?.top3_features_per_cluster?.[Number(row.cluster)] ??
+          []
+        : [],
+    };
+  }
 
-async function fetchJson(url) {
-  const r = await fetch(url);
-  if (!r.ok) throw new Error(`HTTP ${r.status} loading ${url}`);
-  return r.json();
-}
-
-function parseCsv(url) {
-  return new Promise((resolve, reject) => {
-    Papa.parse(url, {
-      download: true,
-      header: true,
-      dynamicTyping: true,
-      skipEmptyLines: true,
-      complete: (res) => resolve(res.data),
-      error: (err) => reject(err),
-    });
-  });
+  const c = reportClusterId();
+  return {
+    mode: "cluster",
+    ...base,
+    cluster: c,
+    cluster_summary: state.summaryByCluster.get(c) ?? null,
+    top_features: state.meta?.top3_features_per_cluster?.[c] ?? state.meta?.top3_features_per_cluster?.[Number(c)] ?? [],
+    heuristics: state.meta?.heuristics?.[c] ?? state.meta?.heuristics?.[Number(c)] ?? null,
+  };
 }
 
 function loadRentDataset() {
@@ -396,22 +440,7 @@ function retrieveRentListings(userQuery) {
   return `San Francisco housing inventory sample (use for concrete SF examples only):\n${JSON.stringify(payload, null, 2)}`;
 }
 
-async function loadContextData() {
-  const [meta, geo, summary] = await Promise.all([fetchJson(DATA_META), fetchJson(DATA_GEOJSON), parseCsv(DATA_SUMMARY)]);
-  state.meta = meta;
-  state.geo = geo;
-  state.summaryRows = summary;
-  state.gridById.clear();
-  state.summaryByCluster.clear();
 
-  for (const row of summary) {
-    state.summaryByCluster.set(String(row.cluster), row);
-  }
-  for (const feat of geo.features ?? []) {
-    const id = String(feat?.properties?.grid_id ?? "");
-    if (id) state.gridById.set(id, feat.properties);
-  }
-}
 
 function normalizeSociopaperRaw(text) {
   return String(text || "")
@@ -480,53 +509,18 @@ async function loadSociopaper() {
   }
 }
 
-function contextPayload() {
-  const mode = els.contextMode.value;
-  const base = {
-    mode,
-    modeling_notes: {
-      overall_fairness_level: "0-100 index for how balanced service access and quality are across areas",
-      top3_gap_factors: "top 3 factors with the largest differences from city average in each cluster",
-    },
-    selected_cluster: els.clusterContext.value,
-  };
 
-  if (mode === "global") {
-    return {
-      ...base,
-      clusters: state.summaryRows,
-      cluster_names: state.meta?.config?.cluster_names ?? {},
-    };
-  }
 
-  if (mode === "cluster") {
-    const c = String(els.clusterContext.value);
-    return {
-      ...base,
-      cluster: c,
-      cluster_summary: state.summaryByCluster.get(c) ?? null,
-      top_features: state.meta?.top3_features_per_cluster?.[c] ?? state.meta?.top3_features_per_cluster?.[Number(c)] ?? [],
-      heuristics: state.meta?.heuristics?.[c] ?? state.meta?.heuristics?.[Number(c)] ?? null,
-    };
-  }
-
-  const gid = String(els.gridContext.value).trim();
-  const row = state.gridById.get(gid) ?? null;
-  return {
-    ...base,
-    grid_id: gid,
-    grid_record: row,
-    cluster_summary: row ? state.summaryByCluster.get(String(row.cluster)) ?? null : null,
-    cluster_top_features: row
-      ? state.meta?.top3_features_per_cluster?.[String(row.cluster)] ??
-        state.meta?.top3_features_per_cluster?.[Number(row.cluster)] ??
-        []
-      : [],
-  };
-}
-
-function renderContextPreview() {
-  els.contextPreview.value = JSON.stringify(contextPayload(), null, 2);
+function buildFullSystemPrompt(userQuery) {
+  const payloadText = JSON.stringify(contextPayload(), null, 2);
+  const paper = retrieveSociopaperExcerpts(userQuery);
+  const paperBlock = paper ? `\n\n${paper}` : "";
+  const rentExcerpt = rentIntentFromQuery(userQuery)
+    ? state.rentListings.length
+      ? `\n\n${retrieveRentListings(userQuery)}`
+      : "\n\nSan Francisco housing inventory CSV was not loaded; answer without inventing specific addresses."
+    : "";
+  return `${DEFAULT_SYSTEM_PROMPT.trim()}\n\n${RESPONSE_STYLE_GUARD}\n\nContext payload (JSON):\n${payloadText}${paperBlock}${rentExcerpt}`;
 }
 
 function bubble(role, text) {
@@ -535,7 +529,7 @@ function bubble(role, text) {
   const meta = document.createElement("div");
   meta.className = "msgMeta";
   meta.textContent = role === "assistant" ? "Assistant" : "You";
-  const body = document.createElement("pre");
+  const body = document.createElement("div");
   body.className = "msgBody";
   body.textContent = role === "assistant" ? sanitizeAssistantText(text) : text;
   wrap.appendChild(meta);
@@ -544,6 +538,7 @@ function bubble(role, text) {
 }
 
 function renderChat() {
+  if (!els.chatMessages) return;
   els.chatMessages.innerHTML = "";
   for (const m of state.chat) {
     els.chatMessages.appendChild(bubble(m.role, m.content));
@@ -551,141 +546,29 @@ function renderChat() {
   els.chatMessages.scrollTop = els.chatMessages.scrollHeight;
 }
 
-function providerFromModel(model) {
-  if (model.startsWith("gpt-")) return "openai";
-  if (model.startsWith("claude-")) return "anthropic";
-  if (model.startsWith("gemini-")) return "google";
-  return "openai";
-}
-
-async function callOpenAI({ model, apiKey, messages, temperature, maxTokens }) {
-  const r = await fetch("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model,
-      messages,
-      temperature,
-      max_tokens: maxTokens,
-    }),
-  });
-  if (!r.ok) throw new Error(`OpenAI error ${r.status}: ${await r.text()}`);
-  const data = await r.json();
-  return data?.choices?.[0]?.message?.content ?? "(empty response)";
-}
-
-async function callAnthropic({ model, apiKey, messages, maxTokens, temperature }) {
-  const system = messages.find((m) => m.role === "system")?.content ?? "";
-  const msg = messages.filter((m) => m.role !== "system").map((m) => ({ role: m.role, content: m.content }));
-  const r = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-api-key": apiKey,
-      "anthropic-version": "2023-06-01",
-    },
-    body: JSON.stringify({
-      model,
-      system,
-      messages: msg,
-      max_tokens: maxTokens,
-      temperature,
-    }),
-  });
-  if (!r.ok) throw new Error(`Anthropic error ${r.status}: ${await r.text()}`);
-  const data = await r.json();
-  return data?.content?.map((c) => c?.text ?? "").join("\n").trim() || "(empty response)";
-}
-
-function toGeminiContents(messages) {
-  return messages
-    .filter((m) => m.role !== "system")
-    .map((m) => ({
-      role: m.role === "assistant" ? "model" : "user",
-      parts: [{ text: m.content }],
-    }));
-}
-
-async function callGoogle({ model, apiKey, messages, temperature, maxTokens }) {
-  const system = messages.find((m) => m.role === "system")?.content ?? "";
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
-  const r = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      system_instruction: { parts: [{ text: system }] },
-      contents: toGeminiContents(messages),
-      generationConfig: {
-        temperature,
-        maxOutputTokens: maxTokens,
-      },
-    }),
-  });
-  if (!r.ok) throw new Error(`Google error ${r.status}: ${await r.text()}`);
-  const data = await r.json();
-  return data?.candidates?.[0]?.content?.parts?.map((p) => p?.text ?? "").join("\n").trim() || "(empty response)";
-}
-
-async function callModel(opts) {
-  const provider = providerFromModel(opts.model);
-  if (provider === "anthropic") return callAnthropic(opts);
-  if (provider === "google") return callGoogle(opts);
-  return callOpenAI(opts);
-}
-
-function sanitizeAssistantText(text) {
-  // Light cleanup only. Do not globally replace words like "performance" or "z-score"—that breaks ML/STATS answers.
-  return String(text || "")
-    .replace(/\*\*"(.*?)"\*\*/g, "$1")
-    .replace(/\*\*“(.*?)”\*\*/g, "$1")
-    .replace(/\*\*'(.*?)'\*\*/g, "$1")
-    .replace(/\*\*\s*["“'](.*?)["”']\s*\*\*/g, "$1")
-    .replace(/\*\*(.*?)\*\*/g, "$1")
-    .replace(/__(.*?)__/g, "$1")
-    .replace(/[“”"]/g, "");
-}
-
-function fullSystemPrompt(userQuery) {
-  const manualPayload = (els.contextPreview.value || "").trim();
-  const payloadText = manualPayload || JSON.stringify(contextPayload(), null, 2);
-  const paper = retrieveSociopaperExcerpts(userQuery);
-  const paperBlock = paper ? `\n\n${paper}` : "";
-  const rentExcerpt = rentIntentFromQuery(userQuery)
-    ? state.rentListings.length
-      ? `\n\n${retrieveRentListings(userQuery)}`
-      : "\n\nSan Francisco housing inventory CSV was not loaded; answer without inventing specific addresses."
-    : "";
-  return `${els.systemPrompt.value.trim()}\n\n${RESPONSE_STYLE_GUARD}\n\nContext payload (JSON):\n${payloadText}${paperBlock}${rentExcerpt}`;
-}
-
 async function send() {
-  const userText = els.userInput.value.trim();
+  const userText = String(els.userInput?.value || "").trim();
   if (!userText) return;
-  const ragBase = (els.ragApiBase.value || "").trim();
-  if (!ragBase) return setStatus("Missing RAG API base URL");
-  window.RAG_API_BASE = ragBase;
+  if (!state.ready) return setStatus("Still loading dashboard data…");
 
-  const model = selectedModel();
-  const temperature = Number(els.temperature.value || 0.3);
-  const maxTokens = Number(els.maxTokens.value || 900);
-  const topK = Number(els.topK.value || 8);
+  const model = "gpt-4o-mini";
+  const temperature = 0.5;
+  const maxTokens = 900;
+  const topK = 8;
 
   state.chat.push({ role: "user", content: userText });
   state.chat = state.chat.slice(-MAX_HISTORY);
   els.userInput.value = "";
   renderChat();
-  setStatus(`Calling RAG backend (${model})...`);
+  setStatus("Thinking…");
   saveState();
 
   try {
-    const messages = [{ role: "system", content: fullSystemPrompt(userText) }, ...state.chat];
+    const messages = [{ role: "system", content: buildFullSystemPrompt(userText) }, ...state.chat];
     const res = await ragChat({
       question: userText,
       messages,
-      systemPrompt: fullSystemPrompt(userText),
+      systemPrompt: buildFullSystemPrompt(userText),
       model,
       topK,
       temperature,
@@ -694,82 +577,75 @@ async function send() {
     const content = sanitizeAssistantText(String(res?.content ?? ""));
     const cites = Array.isArray(res?.citations) ? res.citations : [];
     const citeBlock = cites.length
-      ? `\n\nSources:\n${cites
+      ? `\n\nSources (research papers):\n${cites
           .slice(0, 8)
-          .map((c) => `- [${c.ref}] ${c.source_title || c.source_id || "source"}${c.source_year ? ` (${c.source_year})` : ""}${c.source_url ? ` ${c.source_url}` : ""}`)
+          .map(
+            (c) =>
+              `- [${c.ref}] ${c.source_title || c.source_id || "source"}${c.source_year ? ` (${c.source_year})` : ""}${c.source_url ? ` ${c.source_url}` : ""}`
+          )
           .join("\n")}`
-      : "\n\nSources: (none retrieved)";
+      : "";
     state.chat.push({ role: "assistant", content: `${content}${citeBlock}` });
     state.chat = state.chat.slice(-MAX_HISTORY);
     renderChat();
-    setStatus(`Response received (${cites.length} citations)`);
+    setStatus(cites.length ? `Ready (used ${cites.length} paper excerpts)` : "Ready");
     saveState();
   } catch (err) {
     const msg = String(err?.message || err);
-    state.chat.push({ role: "assistant", content: `Error: ${msg}` });
+    state.chat.push({ role: "assistant", content: `Sorry — I could not get an answer.\n\n${msg}` });
+    state.chat = state.chat.slice(-MAX_HISTORY);
     renderChat();
-    setStatus("Request failed");
+    setStatus("Error");
+    saveState();
   }
+}
+
+function clearChat() {
+  state.chat = [];
+  renderChat();
+  saveState();
+  setStatus("Cleared");
+}
+
+async function onDashboardReady(detail) {
+  state.meta = detail.meta;
+  state.geo = detail.geo;
+  state.summaryRows = detail.summaryRows;
+  reindexFromDashboard();
+  setStatus("Loading local references…");
+
+  try {
+    await Promise.all([loadSociopaper(), loadRentDataset().then((rows) => (state.rentListings = rows))]);
+  } catch {
+    // non-fatal
+  }
+
+  state.ready = true;
+  loadSavedState();
+  renderChat();
+  updateContextHint();
+  setStatus("Ready");
 }
 
 function bindEvents() {
-  els.sendBtn.addEventListener("click", () => send());
-  els.userInput.addEventListener("keydown", (e) => {
-    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) send();
-  });
-
-  const persistHandlers = [
-    els.modelSelect,
-    els.customModel,
-    els.apiKey,
-    els.ragApiBase,
-    els.temperature,
-    els.maxTokens,
-    els.topK,
-    els.contextMode,
-    els.clusterContext,
-    els.gridContext,
-    els.systemPrompt,
-  ];
-  for (const el of persistHandlers) {
-    el.addEventListener("change", () => {
-      renderContextPreview();
-      saveState();
-    });
-  }
-  els.gridContext.addEventListener("input", () => renderContextPreview());
-  els.refreshContext.addEventListener("click", () => renderContextPreview());
-  els.clearChat.addEventListener("click", () => {
-    state.chat = [];
-    renderChat();
-    saveState();
-    setStatus("Chat cleared");
-  });
-}
-
-async function init() {
-  els.systemPrompt.value = DEFAULT_SYSTEM_PROMPT;
-  loadSavedState();
-  bindEvents();
-  renderChat();
-
-  try {
-    setStatus("Loading dashboard context and housing inventory...");
-    await Promise.all([loadContextData(), loadSociopaper()]);
-    try {
-      state.rentListings = await loadRentDataset();
-    } catch (e) {
-      state.rentListings = [];
-      console.warn("Rent dataset load failed", e);
+  els.sendBtn?.addEventListener("click", () => send());
+  els.clearBtn?.addEventListener("click", () => clearChat());
+  els.userInput?.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      send();
     }
-    renderContextPreview();
-    const n = state.rentListings.length;
-    setStatus(n ? `Ready (${n.toLocaleString()} SF inventory units)` : "Ready (housing inventory unavailable)");
-  } catch (err) {
-    const msg = String(err?.message || err);
-    setStatus("Context load failed");
-    els.contextPreview.value = `Failed to load outputs for context.\n${msg}`;
-  }
+  });
+
+  window.addEventListener("equity-dashboard-ready", (e) => {
+    onDashboardReady(e.detail).catch((err) => {
+      console.error(err);
+      setStatus("Failed to initialize chat");
+    });
+  });
+  window.addEventListener("equity-selection-changed", () => updateContextHint());
 }
 
-init();
+bindEvents();
+updateContextHint();
+setStatus("Loading…");

@@ -191,6 +191,7 @@ function renderLegend() {
 function clearSelection() {
   els.selectionEmpty.classList.remove("hidden");
   els.selection.classList.add("hidden");
+  window.dispatchEvent(new CustomEvent("equity-selection-changed"));
 }
 
 function setSelection(props) {
@@ -207,6 +208,8 @@ function setSelection(props) {
   setTimeout(() => {
     els.reportAnchor?.scrollIntoView({ behavior: "smooth", block: "start" });
   }, 0);
+
+  window.dispatchEvent(new CustomEvent("equity-selection-changed"));
 }
 
 async function fetchJson(url) {
@@ -329,6 +332,7 @@ function setReportCluster(c) {
   renderSummary(v);
   renderZChart(v);
   renderHeuristics(v);
+  window.dispatchEvent(new CustomEvent("equity-selection-changed"));
 }
 
 function rebuildLayer() {
@@ -383,6 +387,12 @@ async function init() {
   geo = g;
   summaryRows = summary;
   zRows = z;
+
+  window.dispatchEvent(
+    new CustomEvent("equity-dashboard-ready", {
+      detail: { meta, geo, summaryRows },
+    })
+  );
 
   renderLegend();
   renderPca();

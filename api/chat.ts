@@ -76,10 +76,11 @@ module.exports = async function handler(req: any, res: any) {
             .join("\n\n---\n\n");
 
     const finalSystem =
-      (systemPrompt || "You are a helpful assistant. Use the provided paper excerpts as sources and cite them inline.") +
+      (systemPrompt ||
+        "You are a helpful assistant. Use the provided paper excerpts when relevant and cite with [ref:1], [ref:2]. Answer general questions directly; do not refuse with a narrow 'scope' message.") +
       "\n\nPaper excerpts:\n" +
       contextBlock +
-      "\n\nCite sources like [ref:1], [ref:2] after claims.";
+      "\n\nCite sources like [ref:1], [ref:2] after claims when the excerpts support a statement. If the question is off-topic for the excerpts, answer from general knowledge and say the excerpts are not on point.";
 
     const chatMessages: Msg[] = [{ role: "system", content: finalSystem }];
     if (Array.isArray(messages) && messages.length) chatMessages.push(...messages);
