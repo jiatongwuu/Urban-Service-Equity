@@ -5,6 +5,17 @@ import { createClient } from "@supabase/supabase-js";
 
 type Msg = { role: "system" | "user" | "assistant"; content: string };
 
+function extractQuotedTitle(q: string): string | null {
+  const s = String(q || "");
+  // Match “Title”, "Title", ‘Title’, 'Title'
+  const m = s.match(/[“"'‘]([^”"'’]{18,260})[”"'’]/);
+  if (!m) return null;
+  const title = m[1].trim();
+  // Avoid grabbing short generic phrases.
+  if (title.split(/\s+/).length < 4) return null;
+  return title;
+}
+
 function setCors(res: any) {
   res.setHeader("access-control-allow-origin", "*");
   res.setHeader("access-control-allow-methods", "POST, OPTIONS");
@@ -43,14 +54,36 @@ module.exports = async function handler(req: any, res: any) {
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY || SUPABASE_ANON_KEY!);
 
     const q = question || messages[messages.length - 1]?.content || "";
-    const embed = await openai.embeddings.create({ model: "text-embedding-3-small", input: q });
-    const query_embedding = embed.data[0].embedding;
+    const quotedTitle = extractQuotedTitle(q);
 
-    const { data: chunks, error: matchErr } = await supabase.rpc("match_paper_chunks", {
-      query_embedding,
-      match_count: topK,
-    });
-    if (matchErr) return res.status(500).json({ error: `Supabase RPC error: ${matchErr.message}` });
+    let chunks: any[] = [];
+    // If user names a specific paper title, do a metadata-directed fetch first.
+    if (quotedTitle) {
+      const { data: byTitle, error: titleErr } = await supabase
+        .from("paper_chunks")
+        .select("source_id, source_title, source_year, source_url, chunk_index, content")
+        .ilike("source_title", `%${quotedTitle}%`)
+        .order("chunk_index", { ascending: true })
+        .limit(Math.max(6, Math.min(30, topK)));
+
+      if (titleErr) return res.status(500).json({ error: `Supabase title lookup error: ${titleErr.message}` });
+      if (Array.isArray(byTitle) && byTitle.length) {
+        chunks = byTitle;
+      }
+    }
+
+    // Fall back to vector search if no title match.
+    if (!chunks.length) {
+      const embed = await openai.embeddings.create({ model: "text-embedding-3-small", input: q });
+      const query_embedding = embed.data[0].embedding;
+
+      const { data: vs, error: matchErr } = await supabase.rpc("match_paper_chunks", {
+        query_embedding,
+        match_count: topK,
+      });
+      if (matchErr) return res.status(500).json({ error: `Supabase RPC error: ${matchErr.message}` });
+      chunks = vs || [];
+    }
 
     const citations = (chunks || []).map((c: any, i: number) => ({
       ref: `ref:${i + 1}`,
