@@ -16,6 +16,21 @@ function extractQuotedTitle(q: string): string | null {
   return title;
 }
 
+function extractParenTitle(q: string): string | null {
+  const s = String(q || "");
+  // Match: <title> (2024)
+  const m = s.match(/([A-Za-z0-9][\s\S]{18,260}?)\s*\(\s*(19\d{2}|20\d{2})\s*\)\s*$/);
+  if (!m) return null;
+  const title = m[1].trim();
+  if (title.split(/\s+/).length < 4) return null;
+  return title;
+}
+
+function wantsAuthorOrAbstract(q: string): boolean {
+  const s = String(q || "").toLowerCase();
+  return /\b(author|authors|who wrote|written by|abstract)\b/.test(s);
+}
+
 function setCors(res: any) {
   res.setHeader("access-control-allow-origin", "*");
   res.setHeader("access-control-allow-methods", "POST, OPTIONS");
@@ -55,16 +70,19 @@ module.exports = async function handler(req: any, res: any) {
 
     const q = question || messages[messages.length - 1]?.content || "";
     const quotedTitle = extractQuotedTitle(q);
+    const parenTitle = extractParenTitle(q);
+    const titleHint = quotedTitle || parenTitle;
+    const needHeader = wantsAuthorOrAbstract(q);
 
     let chunks: any[] = [];
     // If user names a specific paper title, do a metadata-directed fetch first.
-    if (quotedTitle) {
+    if (titleHint) {
       const { data: byTitle, error: titleErr } = await supabase
         .from("paper_chunks")
         .select("source_id, source_title, source_year, source_url, chunk_index, content")
-        .ilike("source_title", `%${quotedTitle}%`)
+        .ilike("source_title", `%${titleHint}%`)
         .order("chunk_index", { ascending: true })
-        .limit(Math.max(6, Math.min(30, topK)));
+        .limit(Math.max(12, Math.min(40, topK * 2)));
 
       if (titleErr) return res.status(500).json({ error: `Supabase title lookup error: ${titleErr.message}` });
       if (Array.isArray(byTitle) && byTitle.length) {
@@ -83,6 +101,25 @@ module.exports = async function handler(req: any, res: any) {
       });
       if (matchErr) return res.status(500).json({ error: `Supabase RPC error: ${matchErr.message}` });
       chunks = vs || [];
+    }
+
+    // If the user asks for authors/abstract, force-include the header chunk(s) for the top retrieved paper.
+    if (needHeader && chunks.length) {
+      const topSourceId = chunks[0]?.source_id;
+      if (topSourceId) {
+        const haveIdx = new Set((chunks || []).map((c) => String(c.source_id) + ":" + String(c.chunk_index)));
+        const { data: headRows, error: headErr } = await supabase
+          .from("paper_chunks")
+          .select("source_id, source_title, source_year, source_url, chunk_index, content")
+          .eq("source_id", topSourceId)
+          .in("chunk_index", [0, 1])
+          .order("chunk_index", { ascending: true });
+        if (headErr) return res.status(500).json({ error: `Supabase header fetch error: ${headErr.message}` });
+        for (const r of headRows || []) {
+          const k = String(r.source_id) + ":" + String(r.chunk_index);
+          if (!haveIdx.has(k)) chunks.unshift(r);
+        }
+      }
     }
 
     const citations = (chunks || []).map((c: any, i: number) => ({
