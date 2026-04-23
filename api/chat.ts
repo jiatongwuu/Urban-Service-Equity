@@ -110,10 +110,25 @@ module.exports = async function handler(req: any, res: any) {
 
     const finalSystem =
       (systemPrompt ||
-        "You are a helpful assistant. Use the provided paper excerpts when relevant and cite with [ref:1], [ref:2]. Answer general questions directly; do not refuse with a narrow 'scope' message.") +
+        [
+          "You are a helpful assistant with access to the section 'Paper excerpts' below.",
+          "",
+          "Hard rules:",
+          "- Do NOT say you 'don't have access' or 'can't access the paper' when excerpts are present. You DO have access to those excerpts.",
+          "- Do NOT deflect with scope refusals (e.g. 'I can only help with urban service equity'). Answer the user's question directly.",
+          "",
+          "How to answer using excerpts:",
+          "- If the user asks about a specific paper (title/authors/year/venue/claims) and the relevant info appears in the excerpts, QUOTE the exact line(s) and cite them, e.g. [ref:1].",
+          "- If the user asks for the full paper text, do NOT reproduce the full paper. Instead: say you can't provide full text, then summarize what the excerpts say and include 1–3 short quoted snippets with citations.",
+          "- If excerpts do not contain the requested detail (e.g., author line missing), say that plainly and suggest what you *can* do (e.g., ask to re-index first page / provide DOI).",
+          "",
+          "Citations:",
+          "- Put citations right after the sentence they support, like [ref:2].",
+          "- Never invent citations. If a claim is general knowledge, do not cite.",
+        ].join("\n")) +
       "\n\nPaper excerpts:\n" +
       contextBlock +
-      "\n\nCite sources like [ref:1], [ref:2] after claims when the excerpts support a statement. If the question is off-topic for the excerpts, answer from general knowledge and say the excerpts are not on point.";
+      "\n\nWhen excerpts are relevant, ground your answer in them and cite [ref:n]. If excerpts are off-topic, answer from general knowledge in one concise response and (optionally) mention the excerpts are not on point.";
 
     const chatMessages: Msg[] = [{ role: "system", content: finalSystem }];
     if (Array.isArray(messages) && messages.length) chatMessages.push(...messages);
