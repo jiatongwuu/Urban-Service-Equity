@@ -3,7 +3,7 @@
 // (Do not overwrite if already set by the page.)
 window.RAG_API_BASE = window.RAG_API_BASE || "https://urban-service-equity.vercel.app";
 
-export async function ragChat({ question, messages = [], systemPrompt = "", model = "gpt-4o-mini", topK = 8 }) {
+export async function ragChat({ question, messages = [], systemPrompt = "", model = "gpt-4o", topK = 8 }) {
   const base = (window.RAG_API_BASE || "").replace(/\/$/, "");
   if (!base) throw new Error("Missing window.RAG_API_BASE");
   const r = await fetch(`${base}/api/chat`, {

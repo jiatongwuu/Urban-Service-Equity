@@ -551,7 +551,7 @@ async function send() {
   if (!userText) return;
   if (!state.ready) return setStatus("Still loading dashboard data…");
 
-  const model = "gpt-4o-mini";
+  const model = "gpt-4o";
   const temperature = 0.5;
   const maxTokens = 900;
   const topK = 8;

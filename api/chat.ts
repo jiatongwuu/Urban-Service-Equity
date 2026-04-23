@@ -43,7 +43,7 @@ module.exports = async function handler(req: any, res: any) {
     const question = String(body.question || "").trim();
     const messages = (body.messages || []) as Msg[];
     const systemPrompt = String(body.systemPrompt || "").trim();
-    const model = String(body.model || "gpt-4o-mini");
+    const model = String(body.model || "gpt-4o");
     const topK = Number(body.topK || 8);
 
     if (!question && (!Array.isArray(messages) || messages.length === 0)) {
