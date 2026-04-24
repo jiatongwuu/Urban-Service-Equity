@@ -37,6 +37,19 @@ python rag/index_papers.py --papers-dir "/path/to/papers"
 
 This can be run on any machine that can read the PDFs (including Colab with Drive mounted).
 
+### Index CSV datasets too (same command)
+
+`rag/index_papers.py` also indexes `*.csv` under `--papers-dir` into the same `paper_chunks` table, so the chat backend can retrieve:
+
+- paper excerpts (PDF)
+- dataset excerpts (CSV rows as `col=value` pairs)
+
+If you have very large CSVs, cap ingestion:
+
+```bash
+python rag/index_papers.py --papers-dir "/path/to/papers" --csv-max-rows 50000
+```
+
 ## 4) Deploy the chat API (Vercel)
 
 This repo includes Vercel serverless functions under `api/`.
@@ -59,4 +72,29 @@ On GitHub Pages (static site), set:
 - `window.RAG_API_BASE = "https://<your-vercel-app>.vercel.app"`
 
 See `docs/assets/rag_client.js`.
+
+## Local demo backend (no Vercel)
+
+If you want a quick local demo using the existing website chatbox:
+
+1) Install JS deps (once):
+
+```bash
+npm install
+```
+
+2) Make sure `.env.local` has:
+
+- `OPENAI_API_KEY`
+- `SUPABASE_URL`
+- `SUPABASE_SERVICE_ROLE_KEY` (recommended)
+
+3) Run the local server:
+
+```bash
+node local/rag_server.js
+```
+
+4) Open the website locally (any static server) and set **RAG API base** to `http://localhost:8787`.
+   Add `?ragDebug=1` to the URL to show retrieval diagnostics in the chat output.
 

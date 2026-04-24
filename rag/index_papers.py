@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import csv
 import hashlib
 import os
 import re
@@ -209,6 +210,52 @@ def iter_pdfs(papers_dir: Path) -> Iterable[Path]:
         yield p
 
 
+def iter_csvs(papers_dir: Path) -> Iterable[Path]:
+    for p in papers_dir.rglob("*.csv"):
+        if p.name.startswith("~$"):
+            continue
+        yield p
+
+
+def csv_to_text(path: Path, *, max_rows: int = 50_000) -> str:
+    """
+    Convert a CSV into a plain-text representation for embedding.
+    Keeps header + row lines; caps rows to avoid accidental huge uploads.
+    """
+    try:
+        with path.open("r", encoding="utf-8", errors="replace", newline="") as f:
+            reader = csv.reader(f)
+            rows: List[List[str]] = []
+            for i, row in enumerate(reader):
+                if i >= max_rows:
+                    break
+                rows.append(row)
+        if not rows:
+            return ""
+        header = rows[0]
+        out: List[str] = []
+        out.append(f"CSV filename: {path.name}")
+        out.append("Columns: " + ", ".join([c.strip() for c in header if c is not None]))
+        out.append("")
+        out.append("Rows:")
+        for r in rows[1:]:
+            # Represent each row as "col=value" pairs for better semantic matching
+            pairs = []
+            for k, v in zip(header, r):
+                k = (k or "").strip()
+                if not k:
+                    continue
+                vv = (v or "").strip()
+                if vv == "":
+                    continue
+                pairs.append(f"{k}={vv}")
+            if pairs:
+                out.append("; ".join(pairs))
+        return _clean_text("\n".join(out))
+    except Exception:
+        return ""
+
+
 def main() -> None:
     load_dotenv()
 
@@ -219,6 +266,7 @@ def main() -> None:
     ap.add_argument("--batch", type=int, default=32)
     ap.add_argument("--max-chars", type=int, default=2200)
     ap.add_argument("--overlap-chars", type=int, default=250)
+    ap.add_argument("--csv-max-rows", type=int, default=50_000)
     ap.add_argument(
         "--no-delete-existing",
         action="store_true",
@@ -239,8 +287,9 @@ def main() -> None:
 
     papers_dir = Path(args.papers_dir).expanduser().resolve()
     pdfs = list(iter_pdfs(papers_dir))
-    if not pdfs:
-        raise SystemExit(f"No PDFs found under {papers_dir}")
+    csvs = list(iter_csvs(papers_dir))
+    if not pdfs and not csvs:
+        raise SystemExit(f"No PDFs or CSVs found under {papers_dir}")
 
     all_chunks: List[Chunk] = []
     for pdf in tqdm(pdfs, desc="Reading PDFs"):
@@ -270,10 +319,34 @@ def main() -> None:
         for i, chunk in enumerate(parts):
             all_chunks.append(Chunk(source_id=sid, title=title, year=year, url=None, chunk_index=i + 1, content=chunk))
 
+    # Index CSV files (as separate sources) for data-grounded Q&A.
+    for csv_path in tqdm(csvs, desc="Reading CSVs"):
+        text = csv_to_text(csv_path, max_rows=args.csv_max_rows)
+        if not text:
+            continue
+        parts = simple_chunk(text, max_chars=args.max_chars, overlap_chars=args.overlap_chars)
+        sid = source_id_for_file(csv_path)
+        title = csv_path.stem
+        year = _guess_year(csv_path, text)
+
+        header = "\n".join(
+            [
+                f"Title: {title}",
+                f"Filename: {csv_path.name}",
+                "Type: CSV dataset",
+                "",
+                "Preview:",
+                text[:1800],
+            ]
+        ).strip()
+        all_chunks.append(Chunk(source_id=sid, title=title, year=year, url=None, chunk_index=0, content=header))
+        for i, chunk in enumerate(parts):
+            all_chunks.append(Chunk(source_id=sid, title=title, year=year, url=None, chunk_index=i + 1, content=chunk))
+
     # Embed + upload in batches
     if not args.no_delete_existing:
-        for pdf in tqdm(pdfs, desc="Deleting existing rows"):
-            delete_source_rows(sb, table=args.table, source_id=source_id_for_file(pdf))
+        for p in tqdm([*pdfs, *csvs], desc="Deleting existing rows"):
+            delete_source_rows(sb, table=args.table, source_id=source_id_for_file(p))
 
     for i in tqdm(range(0, len(all_chunks), args.batch), desc="Embedding+upload"):
         batch_chunks = all_chunks[i : i + args.batch]

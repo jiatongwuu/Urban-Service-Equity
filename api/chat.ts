@@ -39,8 +39,8 @@ function extractQuotedTitle(q: string): string | null {
 
 function extractParenTitle(q: string): string | null {
   const s = String(q || "");
-  // Match: <title> (2024)
-  const m = s.match(/([A-Za-z0-9][\s\S]{18,260}?)\s*\(\s*(19\d{2}|20\d{2})\s*\)\s*$/);
+  // Match: <title> (2024)  [optionally followed by punctuation / question]
+  const m = s.match(/([A-Za-z0-9][\s\S]{18,260}?)\s*\(\s*(19\d{2}|20\d{2})\s*\)/);
   if (!m) return null;
   const title = m[1].trim();
   if (title.split(/\s+/).length < 4) return null;

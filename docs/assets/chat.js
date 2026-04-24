@@ -645,7 +645,11 @@ function sanitizeAssistantText(text) {
     .replace(/\*\*\s*["“'](.*?)["”']\s*\*\*/g, "$1")
     .replace(/\*\*(.*?)\*\*/g, "$1")
     .replace(/__(.*?)__/g, "$1")
-    .replace(/[“”"]/g, "");
+    .replace(/[“”"]/g, "")
+    // Hide inline RAG citation markers in the UI.
+    .replace(/\s*\[ref:\d+\]\s*/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function fullSystemPrompt(userQuery) {
@@ -704,12 +708,9 @@ async function send() {
             typeof dbg.visibleRowCount === "number" ? dbg.visibleRowCount : "(unknown)"
           }\n- mode: ${dbg.retrievalMode || "(unknown)"}\n- titleHint: ${dbg.titleHint || "(none)"}`
         : "";
-    const citeBlock = cites.length
-      ? `\n\nSources:\n${cites
-          .slice(0, 8)
-          .map((c) => `- [${c.ref}] ${c.source_title || c.source_id || "source"}${c.source_year ? ` (${c.source_year})` : ""}${c.source_url ? ` ${c.source_url}` : ""}`)
-          .join("\n")}`
-      : "\n\nSources: (none retrieved)";
+    // Hide sources list in the UI (citations still available in `res.citations` for debugging).
+    void cites;
+    const citeBlock = "";
     state.chat.push({ role: "assistant", content: `${content}${citeBlock}${dbgBlock}` });
     state.chat = state.chat.slice(-MAX_HISTORY);
     renderChat();

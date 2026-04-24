@@ -145,7 +145,11 @@ function sanitizeAssistantText(text) {
     .replace(/\*\*\s*["“'](.*?)["”']\s*\*\*/g, "$1")
     .replace(/\*\*(.*?)\*\*/g, "$1")
     .replace(/__(.*?)__/g, "$1")
-    .replace(/[“”"]/g, "");
+    .replace(/[“”"]/g, "")
+    // Hide inline RAG citation markers in the public UI.
+    .replace(/\s*\[ref:\d+\]\s*/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function setStatus(msg) {
@@ -576,16 +580,9 @@ async function send() {
     });
     const content = sanitizeAssistantText(String(res?.content ?? ""));
     const cites = Array.isArray(res?.citations) ? res.citations : [];
-    const citeBlock = cites.length
-      ? `\n\nSources (research papers):\n${cites
-          .slice(0, 8)
-          .map(
-            (c) =>
-              `- [${c.ref}] ${c.source_title || c.source_id || "source"}${c.source_year ? ` (${c.source_year})` : ""}${c.source_url ? ` ${c.source_url}` : ""}`
-          )
-          .join("\n")}`
-      : "";
-    state.chat.push({ role: "assistant", content: `${content}${citeBlock}` });
+    // Public chat: do not show sources/citations to end users.
+    void cites;
+    state.chat.push({ role: "assistant", content });
     state.chat = state.chat.slice(-MAX_HISTORY);
     renderChat();
     setStatus(cites.length ? `Ready (used ${cites.length} paper excerpts)` : "Ready");
