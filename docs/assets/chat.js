@@ -638,18 +638,20 @@ async function callModel(opts) {
 
 function sanitizeAssistantText(text) {
   // Light cleanup only. Do not globally replace words like "performance" or "z-score"—that breaks ML/STATS answers.
-  return String(text || "")
+  let s = String(text || "")
     .replace(/\*\*"(.*?)"\*\*/g, "$1")
     .replace(/\*\*“(.*?)”\*\*/g, "$1")
     .replace(/\*\*'(.*?)'\*\*/g, "$1")
     .replace(/\*\*\s*["“'](.*?)["”']\s*\*\*/g, "$1")
     .replace(/\*\*(.*?)\*\*/g, "$1")
     .replace(/__(.*?)__/g, "$1")
-    .replace(/[“”"]/g, "")
-    // Hide inline RAG citation markers in the UI.
-    .replace(/\s*\[ref:\d+\]\s*/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
+    .replace(/[“”"]/g, "");
+
+  // Hide inline RAG citation markers in the UI, without collapsing line breaks.
+  s = s.replace(/[ \t]*\[ref:\d+\][ \t]*/g, " ");
+  s = s.replace(/[ \t]{2,}/g, " ");
+  s = s.replace(/\n{3,}/g, "\n\n");
+  return s.trim();
 }
 
 function fullSystemPrompt(userQuery) {
