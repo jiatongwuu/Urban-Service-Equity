@@ -14,6 +14,18 @@ type RetrievalDebug = {
   error?: string;
 };
 
+function findTitleHintFromHistory(q: string, messages: Msg[]): string | null {
+  const direct = extractQuotedTitle(q) || extractParenTitle(q);
+  if (direct) return direct;
+  // Look back through recent messages for the last mention of a title-like string.
+  for (let i = (messages?.length || 0) - 1; i >= 0; i--) {
+    const c = String(messages[i]?.content || "");
+    const hint = extractQuotedTitle(c) || extractParenTitle(c);
+    if (hint) return hint;
+  }
+  return null;
+}
+
 function extractQuotedTitle(q: string): string | null {
   const s = String(q || "");
   // Match “Title”, "Title", ‘Title’, 'Title'
@@ -80,9 +92,7 @@ module.exports = async function handler(req: any, res: any) {
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY || SUPABASE_ANON_KEY!);
 
     const q = question || messages[messages.length - 1]?.content || "";
-    const quotedTitle = extractQuotedTitle(q);
-    const parenTitle = extractParenTitle(q);
-    const titleHint = quotedTitle || parenTitle;
+    const titleHint = findTitleHintFromHistory(q, Array.isArray(messages) ? messages : []);
     const needHeader = wantsAuthorOrAbstract(q);
 
     const retrievalDebug: RetrievalDebug = {
@@ -181,31 +191,34 @@ module.exports = async function handler(req: any, res: any) {
             })
             .join("\n\n---\n\n");
 
+    const ragRules = [
+      "You are a helpful assistant with access to the section 'Paper excerpts' below.",
+      "",
+      "Hard rules:",
+      "- Do NOT say you 'don't have access' or 'can't access the paper' when excerpts are present. You DO have access to those excerpts.",
+      "- Do NOT deflect with scope refusals (e.g. 'I can only help with urban service equity'). Answer the user's question directly.",
+      "- If Paper excerpts says 'No paper excerpts were retrieved.', say you couldn't find anything in the RAG index for this request and give concrete troubleshooting steps (confirm backend URL, confirm Supabase project/key, confirm chunks exist with embeddings). Do NOT claim you read the paper.",
+      "",
+      "How to answer using excerpts:",
+      "- If the user asks about a specific paper (title/authors/year/venue/claims) and the relevant info appears in the excerpts, QUOTE the exact line(s) and cite them, e.g. [ref:1].",
+      "- If the user asks for the full paper text, do NOT reproduce the full paper. Instead: say you can't provide full text, then summarize what the excerpts say and include 1–3 short quoted snippets with citations.",
+      "- If excerpts do not contain the requested detail (e.g., author line missing), say that plainly and suggest what you *can* do (e.g., ask to re-index first page / provide DOI).",
+      "",
+      "Citations:",
+      "- Put citations right after the sentence they support, like [ref:2].",
+      "- Never invent citations. If a claim is general knowledge, do not cite.",
+    ].join("\n");
+
     const finalSystem =
-      (systemPrompt ||
-        [
-          "You are a helpful assistant with access to the section 'Paper excerpts' below.",
-          "",
-          "Hard rules:",
-          "- Do NOT say you 'don't have access' or 'can't access the paper' when excerpts are present. You DO have access to those excerpts.",
-          "- Do NOT deflect with scope refusals (e.g. 'I can only help with urban service equity'). Answer the user's question directly.",
-          "- If Paper excerpts says 'No paper excerpts were retrieved.', say you couldn't find anything in the RAG index for this request and give concrete troubleshooting steps (confirm backend URL, confirm Supabase project/key, confirm chunks exist with embeddings). Do NOT claim you read the paper.",
-          "",
-          "How to answer using excerpts:",
-          "- If the user asks about a specific paper (title/authors/year/venue/claims) and the relevant info appears in the excerpts, QUOTE the exact line(s) and cite them, e.g. [ref:1].",
-          "- If the user asks for the full paper text, do NOT reproduce the full paper. Instead: say you can't provide full text, then summarize what the excerpts say and include 1–3 short quoted snippets with citations.",
-          "- If excerpts do not contain the requested detail (e.g., author line missing), say that plainly and suggest what you *can* do (e.g., ask to re-index first page / provide DOI).",
-          "",
-          "Citations:",
-          "- Put citations right after the sentence they support, like [ref:2].",
-          "- Never invent citations. If a claim is general knowledge, do not cite.",
-        ].join("\n")) +
+      (systemPrompt ? systemPrompt + "\n\n" + ragRules : ragRules) +
       "\n\nPaper excerpts:\n" +
       contextBlock +
       "\n\nWhen excerpts are relevant, ground your answer in them and cite [ref:n]. If excerpts are off-topic, answer from general knowledge in one concise response and (optionally) mention the excerpts are not on point.";
 
     const chatMessages: Msg[] = [{ role: "system", content: finalSystem }];
-    if (Array.isArray(messages) && messages.length) chatMessages.push(...messages);
+    // Prevent client-provided system messages from conflicting with server rules.
+    const safeMsgs = Array.isArray(messages) ? messages.filter((m) => m?.role !== "system") : [];
+    if (safeMsgs.length) chatMessages.push(...safeMsgs);
     else chatMessages.push({ role: "user", content: q });
 
     const completion = await openai.chat.completions.create({
