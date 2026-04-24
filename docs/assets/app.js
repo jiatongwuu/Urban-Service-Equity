@@ -69,6 +69,21 @@ function clusterName(c) {
   return meta.config.cluster_names[String(c)] ?? meta.config.cluster_names[c] ?? `Cluster ${c}`;
 }
 
+function featureName(code) {
+  return INDICATOR_LABELS[code] ?? code;
+}
+
+function humanizeTopFeatures(raw) {
+  const text = String(raw ?? "").trim();
+  if (!text) return "—";
+  const names = text
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .map((code) => featureName(code));
+  return names.length ? names.join(", ") : text;
+}
+
 function passesFilters(props) {
   const cf = els.clusterFilter.value;
   if (cf !== "all" && String(props.cluster) !== cf) return false;
@@ -215,7 +230,7 @@ function setSelection(props) {
   els.selGridId.textContent = props.grid_id ?? "—";
   els.selCluster.textContent = clusterName(props.cluster);
   els.selEquity.textContent = Number.isFinite(Number(props.equity_score)) ? Number(props.equity_score).toFixed(1) : "—";
-  els.selTop.textContent = props.top3_features ?? "—";
+  els.selTop.textContent = humanizeTopFeatures(props.top3_features);
   els.clusterLink.href = `#report`;
 
   // Update report to this cluster and scroll down
@@ -385,7 +400,7 @@ function renderPointLevelAdvice() {
 
   if (els.pointNeedPanelMeta) {
     const feat = (needs.find((n) => n.feature && n.feature !== "file_context") || {}).feature;
-    els.pointNeedPanelMeta.textContent = `Grid ${gid}` + (feat ? ` · strongest signal: ${feat}` : "");
+    els.pointNeedPanelMeta.textContent = `Grid ${gid}` + (feat ? ` · strongest signal: ${featureName(feat)}` : "");
   }
 
   if (els.pointDireNeeds) {
