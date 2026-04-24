@@ -5,6 +5,15 @@ import { createClient } from "@supabase/supabase-js";
 
 type Msg = { role: "system" | "user" | "assistant"; content: string };
 
+type RetrievalDebug = {
+  supabaseUrlHost?: string;
+  keyType?: "service_role" | "anon";
+  titleHint?: string | null;
+  retrievalMode?: "title" | "vector" | "none";
+  visibleRowCount?: number | null;
+  error?: string;
+};
+
 function extractQuotedTitle(q: string): string | null {
   const s = String(q || "");
   // Match “Title”, "Title", ‘Title’, 'Title'
@@ -60,12 +69,14 @@ module.exports = async function handler(req: any, res: any) {
     const systemPrompt = String(body.systemPrompt || "").trim();
     const model = String(body.model || "gpt-4o");
     const topK = Number(body.topK || 8);
+    const debug = Boolean(body.debug);
 
     if (!question && (!Array.isArray(messages) || messages.length === 0)) {
       return res.status(400).json({ error: "Provide question or messages" });
     }
 
     const openai = new OpenAI({ apiKey: OPENAI_API_KEY });
+    const keyType: RetrievalDebug["keyType"] = SUPABASE_SERVICE_ROLE_KEY ? "service_role" : "anon";
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY || SUPABASE_ANON_KEY!);
 
     const q = question || messages[messages.length - 1]?.content || "";
@@ -74,9 +85,33 @@ module.exports = async function handler(req: any, res: any) {
     const titleHint = quotedTitle || parenTitle;
     const needHeader = wantsAuthorOrAbstract(q);
 
+    const retrievalDebug: RetrievalDebug = {
+      supabaseUrlHost: (() => {
+        try {
+          return new URL(SUPABASE_URL).host;
+        } catch {
+          return undefined;
+        }
+      })(),
+      keyType,
+      titleHint,
+      retrievalMode: "none",
+      visibleRowCount: null,
+    };
+
+    // Optional quick sanity check: how many rows are visible to this API key?
+    // (If Vercel env vars point at the wrong Supabase project, or RLS blocks anon, this will be 0.)
+    try {
+      const { count, error: countErr } = await supabase.from("paper_chunks").select("id", { count: "exact", head: true });
+      if (!countErr) retrievalDebug.visibleRowCount = typeof count === "number" ? count : null;
+    } catch {
+      // ignore
+    }
+
     let chunks: any[] = [];
     // If user names a specific paper title, do a metadata-directed fetch first.
     if (titleHint) {
+      retrievalDebug.retrievalMode = "title";
       const { data: byTitle, error: titleErr } = await supabase
         .from("paper_chunks")
         .select("source_id, source_title, source_year, source_url, chunk_index, content")
@@ -92,6 +127,7 @@ module.exports = async function handler(req: any, res: any) {
 
     // Fall back to vector search if no title match.
     if (!chunks.length) {
+      retrievalDebug.retrievalMode = "vector";
       const embed = await openai.embeddings.create({ model: "text-embedding-3-small", input: q });
       const query_embedding = embed.data[0].embedding;
 
@@ -153,6 +189,7 @@ module.exports = async function handler(req: any, res: any) {
           "Hard rules:",
           "- Do NOT say you 'don't have access' or 'can't access the paper' when excerpts are present. You DO have access to those excerpts.",
           "- Do NOT deflect with scope refusals (e.g. 'I can only help with urban service equity'). Answer the user's question directly.",
+          "- If Paper excerpts says 'No paper excerpts were retrieved.', say you couldn't find anything in the RAG index for this request and give concrete troubleshooting steps (confirm backend URL, confirm Supabase project/key, confirm chunks exist with embeddings). Do NOT claim you read the paper.",
           "",
           "How to answer using excerpts:",
           "- If the user asks about a specific paper (title/authors/year/venue/claims) and the relevant info appears in the excerpts, QUOTE the exact line(s) and cite them, e.g. [ref:1].",
@@ -179,7 +216,8 @@ module.exports = async function handler(req: any, res: any) {
     });
 
     const content = completion.choices[0]?.message?.content ?? "";
-    return res.status(200).json({ content, citations });
+    const includeDebug = debug || citations.length === 0;
+    return res.status(200).json({ content, citations, ...(includeDebug ? { retrievalDebug } : {}) });
   } catch (e: any) {
     return res.status(500).json({ error: String(e?.message || e) });
   }

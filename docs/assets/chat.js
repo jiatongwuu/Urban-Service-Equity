@@ -668,6 +668,9 @@ async function send() {
   if (!ragBase) return setStatus("Missing RAG API base URL");
   window.RAG_API_BASE = ragBase;
 
+  const urlParams = new URLSearchParams(location.search);
+  const ragDebug = urlParams.get("ragDebug") === "1";
+
   const model = selectedModel();
   const temperature = Number(els.temperature.value || 0.3);
   const maxTokens = Number(els.maxTokens.value || 900);
@@ -690,16 +693,24 @@ async function send() {
       topK,
       temperature,
       maxTokens,
+      debug: ragDebug,
     });
     const content = sanitizeAssistantText(String(res?.content ?? ""));
     const cites = Array.isArray(res?.citations) ? res.citations : [];
+    const dbg = res?.retrievalDebug;
+    const dbgBlock =
+      ragDebug && dbg
+        ? `\n\nRAG debug:\n- supabase: ${dbg.supabaseUrlHost || "(unknown)"}\n- key: ${dbg.keyType || "(unknown)"}\n- visible rows: ${
+            typeof dbg.visibleRowCount === "number" ? dbg.visibleRowCount : "(unknown)"
+          }\n- mode: ${dbg.retrievalMode || "(unknown)"}\n- titleHint: ${dbg.titleHint || "(none)"}`
+        : "";
     const citeBlock = cites.length
       ? `\n\nSources:\n${cites
           .slice(0, 8)
           .map((c) => `- [${c.ref}] ${c.source_title || c.source_id || "source"}${c.source_year ? ` (${c.source_year})` : ""}${c.source_url ? ` ${c.source_url}` : ""}`)
           .join("\n")}`
       : "\n\nSources: (none retrieved)";
-    state.chat.push({ role: "assistant", content: `${content}${citeBlock}` });
+    state.chat.push({ role: "assistant", content: `${content}${citeBlock}${dbgBlock}` });
     state.chat = state.chat.slice(-MAX_HISTORY);
     renderChat();
     setStatus(`Response received (${cites.length} citations)`);
