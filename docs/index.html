@@ -20,40 +20,6 @@
         <div class="title">Equity Dashboard</div>
         <div class="subtitle">Map (Equity-first) → Cluster report (ask a question below)</div>
       </div>
-
-      <div class="controls">
-        <div class="control">
-          <label for="colorMode">Color</label>
-          <select id="colorMode">
-            <option value="equity" selected>Equity score (0–100)</option>
-            <option value="cluster">Cluster</option>
-          </select>
-        </div>
-
-        <div class="control">
-          <label for="clusterFilter">Cluster filter</label>
-          <select id="clusterFilter">
-            <option value="all" selected>All</option>
-            <option value="0">Cluster A</option>
-            <option value="1">Cluster B</option>
-            <option value="2">Cluster C</option>
-            <option value="3">Cluster D</option>
-          </select>
-        </div>
-
-        <div class="control">
-          <label for="equityMin">Equity min</label>
-          <input id="equityMin" type="number" min="0" max="100" step="1" value="0" />
-        </div>
-        <div class="control">
-          <label for="equityMax">Equity max</label>
-          <input id="equityMax" type="number" min="0" max="100" step="1" value="100" />
-        </div>
-
-        <button id="applyFilters" class="btn">Apply</button>
-        <a class="btn secondary" href="#report">Jump to report</a>
-        <a class="btn secondary" href="#landing">Landing</a>
-      </div>
     </header>
 
     <section class="hero heroScene" id="landing">
@@ -119,6 +85,40 @@
         <span class="scrollText">Scroll</span>
         <span class="chev" aria-hidden="true"></span>
       </a>
+    </section>
+
+    <section class="mapControlsRow" aria-label="Map filters">
+      <div class="controls">
+        <div class="control">
+          <label for="colorMode">Color</label>
+          <select id="colorMode">
+            <option value="equity" selected>Equity score (0–100)</option>
+            <option value="cluster">Cluster</option>
+          </select>
+        </div>
+
+        <div class="control">
+          <label for="clusterFilter">Cluster filter</label>
+          <select id="clusterFilter">
+            <option value="all" selected>All</option>
+            <option value="0">Cluster A</option>
+            <option value="1">Cluster B</option>
+            <option value="2">Cluster C</option>
+            <option value="3">Cluster D</option>
+          </select>
+        </div>
+
+        <div class="control">
+          <label for="equityMin">Equity min</label>
+          <input id="equityMin" type="number" min="0" max="100" step="1" value="0" />
+        </div>
+        <div class="control">
+          <label for="equityMax">Equity max</label>
+          <input id="equityMax" type="number" min="0" max="100" step="1" value="100" />
+        </div>
+
+        <button id="applyFilters" class="btn">Apply</button>
+      </div>
     </section>
 
     <main class="main">
@@ -206,26 +206,50 @@
           <div class="stat">
             <div class="statLabel">Scored grids</div>
             <div class="statValue" id="statN">—</div>
+            <details class="statExplain">
+              <summary>What this means</summary>
+              <p>Number of grid cells in this cluster that had complete data and were included in scoring.</p>
+            </details>
           </div>
           <div class="stat">
             <div class="statLabel">Equity mean</div>
             <div class="statValue" id="statEquityMean">—</div>
+            <details class="statExplain">
+              <summary>What this means</summary>
+              <p>Average equity score (0-100) across this cluster. Higher values indicate better balance between service outcomes and local need.</p>
+            </details>
           </div>
           <div class="stat">
             <div class="statLabel">Equity median</div>
             <div class="statValue" id="statEquityMedian">—</div>
+            <details class="statExplain">
+              <summary>What this means</summary>
+              <p>Middle equity score (50th percentile). Half of grids are above this value and half are below.</p>
+            </details>
           </div>
           <div class="stat">
             <div class="statLabel">Equity p10 → p90</div>
             <div class="statValue" id="statEquityBand">—</div>
+            <details class="statExplain">
+              <summary>What this means</summary>
+              <p>Typical spread from the 10th to the 90th percentile. Wider ranges indicate larger inequality inside the same cluster.</p>
+            </details>
           </div>
           <div class="stat">
             <div class="statLabel">Performance mean</div>
             <div class="statValue" id="statPerf">—</div>
+            <details class="statExplain">
+              <summary>What this means</summary>
+              <p>Average service-performance index, built from 311 volume, resolution speed, service diversity, and service mix.</p>
+            </details>
           </div>
           <div class="stat">
             <div class="statLabel">Need mean</div>
             <div class="statValue" id="statNeed">—</div>
+            <details class="statExplain">
+              <summary>What this means</summary>
+              <p>Average need-pressure index, derived from density, crowding, property age/rent-control exposure, affordability, and tenure factors.</p>
+            </details>
           </div>
         </div>
       </section>
@@ -309,7 +333,7 @@
         </div>
       </section>
 
-      <section class="panel">
+      <section class="panel hidden">
         <div class="panelHeader">
           <div class="panelTitle">Model metadata (PCA weights)</div>
           <div class="panelMeta">From <code>outputs/metadata.json</code></div>

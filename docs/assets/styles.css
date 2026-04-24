@@ -298,6 +298,27 @@ body.heroCollapsed .scrollCue{opacity:0;pointer-events:none}
   flex-wrap:wrap;
   align-items:flex-end;
 }
+.mapControlsRow{
+  max-width:1240px;
+  margin:0 auto;
+  padding:10px 12px 0;
+}
+.mapControlsRow .controls{
+  background:var(--panel);
+  border:1px solid var(--border);
+  border-radius:14px;
+  padding:10px 12px 12px;
+}
+.mapControlsRow .control label{
+  font-size:13px;
+}
+.mapControlsRow .control select,
+.mapControlsRow .control input{
+  font-size:15px;
+}
+.mapControlsRow .btn{
+  font-size:16px;
+}
 .control{display:flex;flex-direction:column;gap:6px}
 .control label{font-size:11px;color:var(--muted)}
 .control select,.control input{
@@ -335,6 +356,8 @@ body.heroCollapsed .scrollCue{opacity:0;pointer-events:none}
   grid-template-columns: 1fr 360px;
   gap:12px;
   padding:12px;
+  max-width:1240px;
+  margin:0 auto;
 }
 
 .panel{
@@ -463,7 +486,7 @@ body.heroCollapsed .scrollCue{opacity:0;pointer-events:none}
 /* report page */
 .reportMain{
   grid-template-columns: 1fr;
-  max-width:1100px;
+  max-width:1240px;
   margin:0 auto;
 }
 .reportControls{
@@ -483,6 +506,33 @@ body.heroCollapsed .scrollCue{opacity:0;pointer-events:none}
 .stat{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.06);border-radius:12px;padding:10px}
 .statLabel{color:var(--muted);font-size:11px}
 .statValue{font-weight:900;font-size:14px;margin-top:6px}
+.statExplain{
+  margin-top:8px;
+  border-top:1px solid rgba(255,255,255,.08);
+  padding-top:7px;
+}
+.statExplain summary{
+  cursor:pointer;
+  list-style:none;
+  color:var(--muted);
+  font-size:11px;
+  font-weight:700;
+}
+.statExplain summary::-webkit-details-marker{display:none}
+.statExplain summary::before{
+  content:"+";
+  display:inline-block;
+  width:12px;
+  color:var(--accent);
+  margin-right:4px;
+}
+.statExplain[open] summary::before{content:"-"}
+.statExplain p{
+  margin:6px 0 0;
+  color:var(--muted);
+  font-size:11px;
+  line-height:1.45;
+}
 .smallNote{padding:0 12px 12px;color:var(--muted);font-size:12px;line-height:1.5}
 .chartWrap{padding:0 12px 12px}
 .split2{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:0 12px 12px}
@@ -689,5 +739,7 @@ body.heroCollapsed .scrollCue{opacity:0;pointer-events:none}
   .heroTitle{font-size:32px}
   .bento{grid-template-columns:1fr}
   .bentoSide{grid-template-rows:auto}
+  .mapControlsRow{padding:10px 12px 0}
+  .mapControlsRow .controls{padding:10px}
 }
 

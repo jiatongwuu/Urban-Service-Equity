@@ -311,7 +311,12 @@ function renderZChart(c) {
       responsive: true,
       plugins: { legend: { display: false } },
       scales: {
-        x: { grid: { color: "rgba(255,255,255,.06)" }, ticks: { color: "rgba(232,234,240,.75)" } },
+        x: {
+          min: -2,
+          max: 2,
+          grid: { color: "rgba(255,255,255,.06)" },
+          ticks: { color: "rgba(232,234,240,.75)", stepSize: 1 },
+        },
         y: { grid: { display: false }, ticks: { color: "rgba(232,234,240,.85)" } },
       },
     },
@@ -396,21 +401,21 @@ function renderPointLevelAdvice() {
   }
 
   const needs = (block.needs ?? []).filter((n) => n && n.title);
+  const visibleNeeds = needs.filter((n) => n.feature !== "file_context");
   const sols = block.solutions ?? [];
 
   if (els.pointNeedPanelMeta) {
-    const feat = (needs.find((n) => n.feature && n.feature !== "file_context") || {}).feature;
+    const feat = (visibleNeeds.find((n) => n.feature) || {}).feature;
     els.pointNeedPanelMeta.textContent = `Grid ${gid}` + (feat ? ` · strongest signal: ${featureName(feat)}` : "");
   }
 
   if (els.pointDireNeeds) {
-    if (!needs.length) {
+    if (!visibleNeeds.length) {
       els.pointDireNeeds.textContent = "—";
     } else {
-      els.pointDireNeeds.innerHTML = needs
+      els.pointDireNeeds.innerHTML = visibleNeeds
         .map((n) => {
-          const tag =
-            n.feature === "file_context" ? "Data files" : `${INDICATOR_LABELS[n.feature] || n.feature} (z ${n.z})`;
+          const tag = `${INDICATOR_LABELS[n.feature] || n.feature} (z ${n.z})`;
           return `
         <div class="needCard">
           <div class="pill ${pointPriClass(n.priority)}">${n.priority} · ${tag}</div>
@@ -518,7 +523,7 @@ async function init() {
     })
   );
 
-  map = L.map("map", { zoomControl: true }).setView([37.77, -122.44], 12);
+  map = L.map("map", { zoomControl: true, minZoom: 12 }).setView([37.77, -122.44], 12);
   L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
     maxZoom: 19,
     attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
